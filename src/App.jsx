@@ -850,6 +850,10 @@ function AccountReportsScreen({ reports, onBack, onHome, onDelete, yearlyReports
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [previewing, setPreviewing] = useState(null);
   const [editing, setEditing] = useState(null); // index of monthly report being edited
+  const [multiSelect, setMultiSelect] = useState(false);
+  const [checkedItems, setCheckedItems] = useState([]);
+  const [confirmBatchDelete, setConfirmBatchDelete] = useState(false);
+  const RPT_COLOR = "#7c3aed";
 
   async function ensureXLSX() {
     if (!window.XLSX) {
@@ -885,9 +889,41 @@ function AccountReportsScreen({ reports, onBack, onHome, onDelete, yearlyReports
 
   const selectedReport = selected ? (selected.type === "yearly" ? (yearlyReports||[])[selected.index] : reports[selected.index]) : null;
 
+  const toggleCheck = (i) => setCheckedItems(prev => prev.includes(i) ? prev.filter(x=>x!==i) : [...prev, i]);
+
+  async function downloadAllSelected() {
+    await ensureXLSX();
+    for (const i of [...checkedItems].sort((a,b)=>a-b)) {
+      const r = reports[i];
+      if (r && r.xlsxBase64) {
+        const wb = window.XLSX.read(r.xlsxBase64, { type:"base64" });
+        window.XLSX.writeFile(wb, r.fileName);
+        await new Promise(res => setTimeout(res, 400));
+      }
+    }
+    setCheckedItems([]); setMultiSelect(false);
+  }
+
+  const SelectBtn = () => (
+    <button onClick={()=>{ setMultiSelect(m=>{ if(m) setCheckedItems([]); return !m; }); }}
+      style={{ background: multiSelect?"rgba(255,255,255,0.35)":"rgba(255,255,255,0.18)", border:"none", borderRadius:20, padding:"7px 14px", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M5 7l3 3 3-3M2 12h12" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+      {multiSelect ? "Cancel" : "Download"}
+    </button>
+  );
+
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:LIGHT_BG, fontFamily:"'Segoe UI',sans-serif" }}>
-      <Header title="📊 Account Reports" onBack={onBack} onHome={onHome}/>
+      <Header title="📊 Account Reports" onBack={onBack} onHome={onHome} right={<SelectBtn/>}/>
+      {multiSelect && (
+        <div style={{ background:"#f3eeff", padding:"8px 16px", fontSize:13, color:RPT_COLOR, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+          <span>{checkedItems.length} selected</span>
+          <button onClick={()=>setCheckedItems(checkedItems.length===(reports||[]).length?[]:[...(reports||[]).map((_,i)=>i)])}
+            style={{ background:"none", border:`1px solid ${RPT_COLOR}`, borderRadius:12, padding:"3px 10px", color:RPT_COLOR, fontWeight:600, fontSize:12, cursor:"pointer" }}>
+            {checkedItems.length===(reports||[]).length?"Deselect All":"Select All"}
+          </button>
+        </div>
+      )}
       <div style={{ flex:1, overflowY:"auto", padding:16 }}>
 
         {/* Regenerate button */}
@@ -930,9 +966,15 @@ function AccountReportsScreen({ reports, onBack, onHome, onDelete, yearlyReports
             <div style={{ fontSize:13, color:"#888" }}>Generate a monthly report from the Reports button on the home screen — it will be saved here automatically.</div>
           </div>
         ) : reports.map((report,i)=>(
-          <div key={report.id||i} onClick={()=>setSelected({ type:"monthly", index:i })}
-            style={{ background:"#fff", borderRadius:12, padding:"14px 16px", marginBottom:10, boxShadow:"0 2px 8px rgba(0,0,0,0.06)", borderLeft:`4px solid ${BLUE}`, cursor:"pointer" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+          <div key={report.id||i} onClick={()=> multiSelect ? toggleCheck(i) : setSelected({ type:"monthly", index:i })}
+            style={{ background:"#fff", borderRadius:12, padding:"14px 16px", marginBottom:10, boxShadow:"0 2px 8px rgba(0,0,0,0.06)", borderLeft:`4px solid ${BLUE}`, cursor:"pointer", display:"flex", alignItems:"center", gap:12,
+              outline: multiSelect && checkedItems.includes(i) ? `2px solid ${RPT_COLOR}` : "none" }}>
+            {multiSelect && (
+              <div style={{ width:22, height:22, borderRadius:6, border:`2px solid ${RPT_COLOR}`, background: checkedItems.includes(i)?RPT_COLOR:"#fff", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                {checkedItems.includes(i) && <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 7l3.5 3.5L11 3" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+              </div>
+            )}
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", flex:1, minWidth:0 }}>
               <div style={{ flex:1, minWidth:0 }}>
                 <div style={{ fontWeight:700, fontSize:14, color:"#222", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{report.fileName}</div>
                 <div style={{ fontSize:12, color:"#888", marginTop:2 }}>{report.period}</div>
@@ -947,7 +989,34 @@ function AccountReportsScreen({ reports, onBack, onHome, onDelete, yearlyReports
           </div>
         ))}
       </div>
-      <BottomBar onHome={onHome}/>
+      {multiSelect && checkedItems.length > 0 && (
+        <div style={{ padding:"12px 16px", background:"#fff", borderTop:"1px solid #dde", flexShrink:0 }}>
+          <button onClick={downloadAllSelected}
+            style={{ width:"100%", padding:"13px", background:RPT_COLOR, color:"#fff", border:"none", borderRadius:12, fontWeight:700, fontSize:15, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8, marginBottom:10 }}>
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 2v10M5 8l4 4 4-4M2 14h14" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            Download Selected ({checkedItems.length})
+          </button>
+          <button onClick={()=>setConfirmBatchDelete(true)}
+            style={{ width:"100%", padding:"13px", background:"#c00", color:"#fff", border:"none", borderRadius:12, fontWeight:700, fontSize:15, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+            🗑 Delete ({checkedItems.length})
+          </button>
+        </div>
+      )}
+      {confirmBatchDelete && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:3000, padding:20 }}>
+          <div style={{ background:"#fff", borderRadius:16, width:"100%", maxWidth:340, overflow:"hidden", boxShadow:"0 20px 60px rgba(0,0,0,0.3)" }}>
+            <div style={{ padding:"20px 20px 12px", fontWeight:700, fontSize:16, textAlign:"center", color:"#222" }}>Delete {checkedItems.length} report{checkedItems.length!==1?"s":""}?</div>
+            <div style={{ padding:"0 20px 20px", fontSize:14, color:"#666", textAlign:"center" }}>This cannot be undone.</div>
+            <div style={{ display:"flex", borderTop:"1px solid #eee" }}>
+              <button onClick={()=>setConfirmBatchDelete(false)}
+                style={{ flex:1, padding:16, background:"#fff", color:"#444", border:"none", fontWeight:700, fontSize:15, cursor:"pointer", borderRight:"1px solid #eee" }}>No</button>
+              <button onClick={()=>{ const idxs=[...checkedItems].sort((a,b)=>b-a); for(const i of idxs){ onDelete(i); } setCheckedItems([]); setMultiSelect(false); setConfirmBatchDelete(false); }}
+                style={{ flex:1, padding:16, background:"#c00", color:"#fff", border:"none", fontWeight:700, fontSize:15, cursor:"pointer" }}>Yes</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {!multiSelect && <BottomBar onHome={onHome}/>}
 
       {/* Action sheet */}
       {selected !== null && selectedReport && (
@@ -2776,6 +2845,7 @@ function BatchDownloader({ queue, onDone }) {
     if (item.type === "bs")  return <BSPDFPreview key={key} serviceData={r.serviceData} engineerData={r.bsEngData} signatureData={r.bsSigData} onClose={()=>{}} autoDownload onDownloadDone={stableAdvance}/>;
     if (item.type === "gw")  return <GasWorksPDFPreview key={key} form={r.gwData} onClose={()=>{}} autoDownload onDownloadDone={stableAdvance}/>;
     if (item.type === "gi")  return <GasIsolationPDFPreview key={key} form={r.giData} onClose={()=>{}} autoDownload onDownloadDone={stableAdvance}/>;
+    if (item.type === "wn")  return <WNPDFPreview key={key} wnFormData={{...r.wnFormData, issueDate:r.wnEngData?.issueDate, issueTime:r.wnEngData?.issueTime}} wnEngData={r.wnEngData} onClose={()=>{}} autoDownload onDownloadDone={stableAdvance}/>;
     return null;
   };
 
@@ -5297,18 +5367,45 @@ function WarningNoticeRecordsScreen({ records, onBack, onHome, onDelete }) {
   const [selected, setSelected] = useState(null);
   const [viewing, setViewing] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [confirmBatchDelete, setConfirmBatchDelete] = useState(false);
+  const [multiSelect, setMultiSelect] = useState(false);
+  const [checkedItems, setCheckedItems] = useState([]);
+  const [batchQueue, setBatchQueue] = useState(null);
   const WN_COLOR = "#b91c1c";
 
   const wnRecords = records.map((r,i)=>({...r,_origIdx:i})).filter(r=>r.type==="wn");
+
+  if (batchQueue !== null) {
+    return <BatchDownloader queue={batchQueue} onDone={()=>{ setBatchQueue(null); setMultiSelect(false); setCheckedItems([]); }}/>;
+  }
 
   if (viewing !== null) {
     const r = wnRecords[viewing];
     return <WNPDFPreview wnFormData={{...r.wnFormData, issueDate:r.wnEngData?.issueDate, issueTime:r.wnEngData?.issueTime}} wnEngData={r.wnEngData} onClose={()=>setViewing(null)}/>;
   }
 
+  const toggleCheck = (i) => setCheckedItems(prev => prev.includes(i) ? prev.filter(x=>x!==i) : [...prev, i]);
+
+  const DownloadBtn = () => (
+    <button onClick={()=>{ setMultiSelect(m=>{ if(m) setCheckedItems([]); return !m; }); }}
+      style={{ background: multiSelect?"rgba(255,255,255,0.35)":"rgba(255,255,255,0.18)", border:"none", borderRadius:20, padding:"7px 14px", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M5 7l3 3 3-3M2 12h12" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+      {multiSelect ? "Cancel" : "Download"}
+    </button>
+  );
+
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:LIGHT_BG, fontFamily:"'Segoe UI',sans-serif" }}>
-      <Header title="⚠️ Warning Notices" onBack={onBack}/>
+      <Header title="⚠️ Warning Notices" onBack={onBack} right={<DownloadBtn/>}/>
+      {multiSelect && (
+        <div style={{ background:"#fef2f2", padding:"8px 16px", fontSize:13, color:WN_COLOR, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+          <span>{checkedItems.length} selected</span>
+          <button onClick={()=>setCheckedItems(checkedItems.length===wnRecords.length?[]:[...wnRecords.map((_,i)=>i)])}
+            style={{ background:"none", border:`1px solid ${WN_COLOR}`, borderRadius:12, padding:"3px 10px", color:WN_COLOR, fontWeight:600, fontSize:12, cursor:"pointer" }}>
+            {checkedItems.length===wnRecords.length?"Deselect All":"Select All"}
+          </button>
+        </div>
+      )}
       <div style={{ flex:1, overflowY:"auto", padding:16 }}>
         {wnRecords.length===0 ? (
           <div style={{ textAlign:"center", color:"#aaa", marginTop:60, fontSize:15 }}>No warning notices saved yet</div>
@@ -5316,19 +5413,52 @@ function WarningNoticeRecordsScreen({ records, onBack, onHome, onDelete }) {
           const addr = [r.wnFormData?.instAddr1, r.wnFormData?.instAddr2, r.wnFormData?.instPostcode].filter(Boolean).join(", ");
           const client = r.wnFormData?.clientName || "Unknown Client";
           return (
-            <div key={i} onClick={()=>setSelected(i)}
-              style={{ background:"#fff", borderRadius:10, padding:"14px 16px", marginBottom:10, boxShadow:"0 2px 8px rgba(0,0,0,0.06)", borderLeft:`4px solid ${WN_COLOR}`, cursor:"pointer", display:"flex", alignItems:"center", gap:12 }}>
+            <div key={i} onClick={()=> multiSelect ? toggleCheck(i) : setSelected(i)}
+              style={{ background:"#fff", borderRadius:10, padding:"14px 16px", marginBottom:10, boxShadow:"0 2px 8px rgba(0,0,0,0.06)", borderLeft:`4px solid ${WN_COLOR}`, cursor:"pointer", display:"flex", alignItems:"center", gap:12,
+                outline: multiSelect && checkedItems.includes(i) ? `2px solid ${WN_COLOR}` : "none" }}>
+              {multiSelect && (
+                <div style={{ width:22, height:22, borderRadius:6, border:`2px solid ${WN_COLOR}`, background: checkedItems.includes(i)?WN_COLOR:"#fff", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                  {checkedItems.includes(i) && <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 7l3.5 3.5L11 3" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                </div>
+              )}
               <div style={{ flex:1 }}>
                 <div style={{ fontWeight:700, fontSize:15, color:"#222" }}>{client}</div>
                 <div style={{ fontSize:13, color:"#888", marginTop:3 }}>{addr || r.wnFormData?.certRef || ""}</div>
                 <div style={{ fontSize:12, color:WN_COLOR, marginTop:3 }}>⚠️ Warning Notice · {r.savedAt ? new Date(r.savedAt).toLocaleDateString("en-GB") : "No date"}</div>
               </div>
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M5 3L10 8L5 13" stroke="#bbb" strokeWidth="2" strokeLinecap="round"/></svg>
+              {!multiSelect && <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M5 3L10 8L5 13" stroke="#bbb" strokeWidth="2" strokeLinecap="round"/></svg>}
             </div>
           );
         })}
       </div>
-      <BottomBar onHome={onHome}/>
+      {multiSelect && checkedItems.length > 0 && (
+        <div style={{ padding:"12px 16px", background:"#fff", borderTop:"1px solid #dde", flexShrink:0 }}>
+          <button onClick={()=> setBatchQueue([...checkedItems].sort((a,b)=>a-b).map(i=>({ type:"wn", record:wnRecords[i], label: wnRecords[i]?.wnFormData?.clientName || "Warning Notice" })))}
+            style={{ width:"100%", padding:"13px", background:WN_COLOR, color:"#fff", border:"none", borderRadius:12, fontWeight:700, fontSize:15, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8, marginBottom:10 }}>
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 2v10M5 8l4 4 4-4M2 14h14" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            Download Selected ({checkedItems.length})
+          </button>
+          <button onClick={()=>setConfirmBatchDelete(true)}
+            style={{ width:"100%", padding:"13px", background:"#c00", color:"#fff", border:"none", borderRadius:12, fontWeight:700, fontSize:15, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+            🗑 Delete ({checkedItems.length})
+          </button>
+        </div>
+      )}
+      {confirmBatchDelete && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:3000, padding:20 }}>
+          <div style={{ background:"#fff", borderRadius:16, width:"100%", maxWidth:340, overflow:"hidden", boxShadow:"0 20px 60px rgba(0,0,0,0.3)" }}>
+            <div style={{ padding:"20px 20px 12px", fontWeight:700, fontSize:16, textAlign:"center", color:"#222" }}>Delete {checkedItems.length} notice{checkedItems.length!==1?"s":""}?</div>
+            <div style={{ padding:"0 20px 20px", fontSize:14, color:"#666", textAlign:"center" }}>This cannot be undone.</div>
+            <div style={{ display:"flex", borderTop:"1px solid #eee" }}>
+              <button onClick={()=>setConfirmBatchDelete(false)}
+                style={{ flex:1, padding:16, background:"#fff", color:"#444", border:"none", fontWeight:700, fontSize:15, cursor:"pointer", borderRight:"1px solid #eee" }}>No</button>
+              <button onClick={()=>{ const idxs=[...checkedItems].sort((a,b)=>b-a); for(const i of idxs){ onDelete(wnRecords[i]._origIdx); } setCheckedItems([]); setMultiSelect(false); setConfirmBatchDelete(false); }}
+                style={{ flex:1, padding:16, background:"#c00", color:"#fff", border:"none", fontWeight:700, fontSize:15, cursor:"pointer" }}>Yes</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {!multiSelect && <BottomBar onHome={onHome}/>}
       {selected !== null && (
         <RecordActionSheet title={wnRecords[selected]?.wnFormData?.clientName || "Warning Notice"} onClose={()=>setSelected(null)}
           onPreview={()=>{ setViewing(selected); setSelected(null); }}
