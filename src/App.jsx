@@ -2846,6 +2846,7 @@ function BatchDownloader({ queue, onDone }) {
     if (item.type === "gw")  return <GasWorksPDFPreview key={key} form={r.gwData} onClose={()=>{}} autoDownload onDownloadDone={stableAdvance}/>;
     if (item.type === "gi")  return <GasIsolationPDFPreview key={key} form={r.giData} onClose={()=>{}} autoDownload onDownloadDone={stableAdvance}/>;
     if (item.type === "wn")  return <WNPDFPreview key={key} wnFormData={{...r.wnFormData, issueDate:r.wnEngData?.issueDate, issueTime:r.wnEngData?.issueTime}} wnEngData={r.wnEngData} onClose={()=>{}} autoDownload onDownloadDone={stableAdvance}/>;
+    if (item.type === "inv")  return <InvoicePDFPreview key={key} invoiceData={r} onClose={()=>{}} onSave={()=>{}} autoDownload onDownloadDone={stableAdvance}/>;
     return null;
   };
 
@@ -3772,10 +3773,18 @@ function InvoiceWizard({ sourceRecord, onSave, onClose, invoiceRecords }) {
 }
 
 // ─── Invoice PDF Preview ──────────────────────────────────────────────────────
-function InvoicePDFPreview({ invoiceData: inv, onClose, onSave }) {
+function InvoicePDFPreview({ invoiceData: inv, onClose, onSave, autoDownload, onDownloadDone }) {
   const pdfRef = useRef(null);
   const [downloading, setDownloading] = useState(false);
   const [saved, setSaved] = useState(false);
+  const autoDownloadDoneRef = useRef(false);
+
+  useEffect(() => {
+    if (autoDownload && !autoDownloadDoneRef.current) {
+      autoDownloadDoneRef.current = true;
+      setTimeout(() => { downloadPDF().then(() => { if (onDownloadDone) onDownloadDone(); }); }, 600);
+    }
+  }, []);
 
   const downloadPDF = async () => {
     setDownloading(true);
@@ -4423,36 +4432,99 @@ function InvoicesList({ invoices, title, onBack, onHome, onDelete, onMarkPaid })
   const [selected, setSelected] = useState(null);
   const [viewing, setViewing] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [confirmBatchDelete, setConfirmBatchDelete] = useState(false);
+  const [multiSelect, setMultiSelect] = useState(false);
+  const [checkedItems, setCheckedItems] = useState([]);
+  const [batchQueue, setBatchQueue] = useState(null);
+
+  const PAID_COLOR = "#1a7a3a";
+  const INV_COLOR = INV_GREEN;
+
+  if (batchQueue !== null) {
+    return <BatchDownloader queue={batchQueue} onDone={() => { setBatchQueue(null); setMultiSelect(false); setCheckedItems([]); }} />;
+  }
 
   if (viewing !== null) {
     const inv = invoices[viewing];
     return <InvoicePDFPreview invoiceData={inv} onClose={() => setViewing(null)} onSave={() => {}} />;
   }
 
-  const PAID_COLOR = "#1a7a3a";
+  const toggleCheck = (i) => setCheckedItems(prev => prev.includes(i) ? prev.filter(x => x !== i) : [...prev, i]);
+
+  const DownloadBtn = () => (
+    <button onClick={() => { setMultiSelect(m => { if (m) setCheckedItems([]); return !m; }); }}
+      style={{ background: multiSelect ? "rgba(255,255,255,0.35)" : "rgba(255,255,255,0.18)", border: "none", borderRadius: 20, padding: "7px 14px", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M5 7l3 3 3-3M2 12h12" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+      {multiSelect ? "Cancel" : "Download"}
+    </button>
+  );
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: LIGHT_BG, fontFamily: "'Segoe UI',sans-serif" }}>
-      <Header title={title} onBack={onBack} />
+      <Header title={title} onBack={onBack} right={<DownloadBtn />} />
+      {multiSelect && (
+        <div style={{ background: "#e8f5ee", padding: "8px 16px", fontSize: 13, color: INV_GREEN_DARK, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span>{checkedItems.length} selected</span>
+          <button onClick={() => setCheckedItems(checkedItems.length === invoices.length ? [] : [...invoices.map((_, i) => i)])}
+            style={{ background: "none", border: `1px solid ${INV_GREEN_DARK}`, borderRadius: 12, padding: "3px 10px", color: INV_GREEN_DARK, fontWeight: 600, fontSize: 12, cursor: "pointer" }}>
+            {checkedItems.length === invoices.length ? "Deselect All" : "Select All"}
+          </button>
+        </div>
+      )}
       <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
         {invoices.length === 0 ? (
           <div style={{ textAlign: "center", color: "#aaa", marginTop: 60, fontSize: 15 }}>No invoices here yet</div>
         ) : invoices.map((inv, i) => (
-          <div key={i} onClick={() => setSelected(i)}
-            style={{ background: "#fff", borderRadius: 10, padding: "14px 16px", marginBottom: 10, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", borderLeft: `4px solid ${inv.fullyPaid ? PAID_COLOR : INV_GREEN}`, cursor: "pointer" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={{ fontWeight: 700, fontSize: 15, color: "#222" }}>{inv.invoiceNo}</div>
-              {inv.fullyPaid && <span style={{ background: "#e8f5ee", color: PAID_COLOR, fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 10 }}>✓ PAID</span>}
-            </div>
-            <div style={{ fontSize: 13, color: "#888", marginTop: 3 }}>{inv.clientName} · {inv.instAddr1 || inv.clientAddr1}</div>
-            <div style={{ fontSize: 12, color: inv.fullyPaid ? PAID_COLOR : INV_GREEN_DARK, marginTop: 3, display: "flex", justifyContent: "space-between" }}>
-              <span>💰 £{(inv.total||0).toFixed(2)} · {inv.fullyPaid ? "Fully Paid" : inv.outstanding > 0 ? `£${inv.outstanding.toFixed(2)} outstanding` : "Pending"}</span>
-              <span>{inv.createdAt ? new Date(inv.createdAt).toLocaleDateString("en-GB") : ""}</span>
+          <div key={i} onClick={() => multiSelect ? toggleCheck(i) : setSelected(i)}
+            style={{ background: "#fff", borderRadius: 10, padding: "14px 16px", marginBottom: 10, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", borderLeft: `4px solid ${inv.fullyPaid ? PAID_COLOR : INV_GREEN}`, cursor: "pointer", display: "flex", alignItems: "center", gap: 12,
+              outline: multiSelect && checkedItems.includes(i) ? `2px solid ${INV_GREEN}` : "none" }}>
+            {multiSelect && (
+              <div style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${INV_GREEN}`, background: checkedItems.includes(i) ? INV_GREEN : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                {checkedItems.includes(i) && <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 7l3.5 3.5L11 3" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+              </div>
+            )}
+            <div style={{ flex: 1 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ fontWeight: 700, fontSize: 15, color: "#222" }}>{inv.invoiceNo}</div>
+                {inv.fullyPaid && <span style={{ background: "#e8f5ee", color: PAID_COLOR, fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 10 }}>✓ PAID</span>}
+              </div>
+              <div style={{ fontSize: 13, color: "#888", marginTop: 3 }}>{inv.clientName} · {inv.instAddr1 || inv.clientAddr1}</div>
+              <div style={{ fontSize: 12, color: inv.fullyPaid ? PAID_COLOR : INV_GREEN_DARK, marginTop: 3, display: "flex", justifyContent: "space-between" }}>
+                <span>💰 £{(inv.total||0).toFixed(2)} · {inv.fullyPaid ? "Fully Paid" : inv.outstanding > 0 ? `£${inv.outstanding.toFixed(2)} outstanding` : "Pending"}</span>
+                <span>{inv.createdAt ? new Date(inv.createdAt).toLocaleDateString("en-GB") : ""}</span>
+              </div>
             </div>
           </div>
         ))}
       </div>
-      <BottomBar onHome={onHome} />
+      {multiSelect && checkedItems.length > 0 && (
+        <div style={{ padding: "12px 16px", background: "#fff", borderTop: "1px solid #dde", flexShrink: 0 }}>
+          <button onClick={() => setBatchQueue([...checkedItems].sort((a, b) => a - b).map(i => ({ type: "inv", record: invoices[i], label: invoices[i]?.invoiceNo || "Invoice" })))}
+            style={{ width: "100%", padding: "13px", background: INV_GREEN, color: "#fff", border: "none", borderRadius: 12, fontWeight: 700, fontSize: 15, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 10 }}>
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 2v10M5 8l4 4 4-4M2 14h14" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            Download Selected ({checkedItems.length})
+          </button>
+          <button onClick={() => setConfirmBatchDelete(true)}
+            style={{ width: "100%", padding: "13px", background: "#c00", color: "#fff", border: "none", borderRadius: 12, fontWeight: 700, fontSize: 15, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+            🗑 Delete ({checkedItems.length})
+          </button>
+        </div>
+      )}
+      {confirmBatchDelete && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000, padding: 20 }}>
+          <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 340, overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+            <div style={{ padding: "20px 20px 12px", fontWeight: 700, fontSize: 16, textAlign: "center", color: "#222" }}>Delete {checkedItems.length} invoice{checkedItems.length !== 1 ? "s" : ""}?</div>
+            <div style={{ padding: "0 20px 20px", fontSize: 14, color: "#666", textAlign: "center" }}>This cannot be undone.</div>
+            <div style={{ display: "flex", borderTop: "1px solid #eee" }}>
+              <button onClick={() => setConfirmBatchDelete(false)}
+                style={{ flex: 1, padding: 16, background: "#fff", color: "#444", border: "none", fontWeight: 700, fontSize: 15, cursor: "pointer", borderRight: "1px solid #eee" }}>No</button>
+              <button onClick={() => { const idxs = [...checkedItems].sort((a, b) => b - a); for (const i of idxs) { onDelete(i); } setCheckedItems([]); setMultiSelect(false); setConfirmBatchDelete(false); }}
+                style={{ flex: 1, padding: 16, background: "#c00", color: "#fff", border: "none", fontWeight: 700, fontSize: 15, cursor: "pointer" }}>Yes</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {!multiSelect && <BottomBar onHome={onHome} />}
       {selected !== null && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-end", zIndex: 2000 }} onClick={() => setSelected(null)}>
           <div style={{ background: "#fff", width: "100%", borderRadius: "20px 20px 0 0", padding: 24 }} onClick={e => e.stopPropagation()}>
