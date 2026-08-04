@@ -24,6 +24,22 @@ function today() {
 function todayISO() {
   return new Date().toISOString().slice(0,10);
 }
+
+// Fresh, blank default data shapes for each job type. Used both for initial
+// useState() values and to reset the form when starting a brand-new job so
+// leftover data from a previous job/edit session doesn't carry over.
+function defaultCertData() {
+  return { certRef:"", clientName:"", clientAddr1:"", clientAddr2:"", clientAddr3:"", clientPostcode:"", clientTel:"", clientEmail:"", instName:"", instAddr1:"", instAddr2:"", instAddr3:"", instPostcode:"", instTel:"" };
+}
+function defaultServiceData() {
+  return { certRef:"", clientName:"", clientAddr1:"", clientAddr2:"", clientAddr3:"", clientPostcode:"", clientTel:"", clientEmail:"", instName:"", instAddr1:"", instAddr2:"", instAddr3:"", instPostcode:"", instTel:"", typeOfWorkService:"N/A", typeOfWorkBreakdown:"N/A", boilerMake:"", boilerModel:"", boilerSerial:"", applianceMake:"", applianceModel:"", applianceSerial:"", coReading:"", co2Reading:"", flueType:"N/A", ventilationSize:"N/A", waterFuelSound:"N/A", electricallyFused:"N/A", correctValving:"N/A", isolationAvailable:"N/A", boilerPlantroom:"N/A", heatExchanger:"N/A", ignition:"N/A", gasValve:"N/A", fan:"N/A", safetyDevice:"N/A", controlBox:"N/A", burnersAndPilot:"N/A", fuelPressure:"N/A", burnerWashed:"N/A", pilotAssembly:"N/A", ignitionSystem:"N/A", burnerFan:"N/A", heatExchangerFlueways:"N/A", fuelElectrical:"N/A", additionalNotes:"", sparesRequired:"", coCo2Ratio:"", dataProtection:false, customerDeclaration:"" };
+}
+function defaultGwData() {
+  return { project:"", date:todayISO(), address:"", workType:"Kitchen Refurb", visit1Date:todayISO(), visit2Date:todayISO(), enablingNotes:"", signerName:"Andrew King-Page", appliances:[], meterBoxLocation:null, applianceLocations:{} };
+}
+function defaultGiData() {
+  return { contractName:"", contactNo:"", date:todayISO(), time:"", gasEngineerName:"Andrew King-Page", subcontractorName:"", propertyName:"", gasSafeNo:"927997", scopeOfWorks:"", scopingSurveyCompleted:"Yes", locationOfWork:"", appliancesToIsolate:"", appliancesIsolated:"", gasCertType:"Gas safety certificate", gasCertNo:"", precautions:"", hazardsAware:"Yes", hazardsDetail:"RIAMS have been read\nCheck all works and any near appliances", certIssuedHow:"", contractorName:"Andrew King-Page and D S Plumbing Solutions", activityType:"", coDetectors:"", permitReceiverName:"", permitReceiverDatetime:"", appliancesMadeLive:"", engineerName:"Andrew King-Page", closeCertType:"Gas Safety Certificate", closeCertNo:"", gasCertIssuedHow:"Email", closeOutPermitName:"", closeOutDatetime:"", permitIssuerName:"Wates", permitIssuerDatetime:"", permitReceiverName2:"Alect", permitReceiverDatetime2:"", engineerSignDatetime:"", watesSiteManager:"Dean Tanner", watesSignDatetime:"", engineerSigImage:null };
+}
 // Converts UK dates (DD/MM/YY or DD/MM/YYYY) and ISO dates to YYYY-MM-DD.
 // Returns empty string if unparseable.
 function normaliseDate(str) {
@@ -8251,7 +8267,7 @@ function App() {
     }
   }, []);
 
-  const [certData, setCertData] = useState({ certRef:"", clientName:"", clientAddr1:"", clientAddr2:"", clientAddr3:"", clientPostcode:"", clientTel:"", clientEmail:"", instName:"", instAddr1:"", instAddr2:"", instAddr3:"", instPostcode:"", instTel:"" });
+  const [certData, setCertData] = useState(defaultCertData());
   const [appliances, setAppliances] = useState([]);
   const [faults, setFaults] = useState([]);
   const [finalChecks, setFinalChecks] = useState({});
@@ -8272,17 +8288,17 @@ function App() {
   const [bsSubScreen, setBsSubScreen] = useState(null);
   const [bsShowOptions, setBsShowOptions] = useState(false);
   const [bsShowPDF, setBsShowPDF] = useState(false);
-  const [serviceData, setServiceData] = useState({ certRef:"", clientName:"", clientAddr1:"", clientAddr2:"", clientAddr3:"", clientPostcode:"", clientTel:"", clientEmail:"", instName:"", instAddr1:"", instAddr2:"", instAddr3:"", instPostcode:"", instTel:"", typeOfWorkService:"N/A", typeOfWorkBreakdown:"N/A", boilerMake:"", boilerModel:"", boilerSerial:"", applianceMake:"", applianceModel:"", applianceSerial:"", coReading:"", co2Reading:"", flueType:"N/A", ventilationSize:"N/A", waterFuelSound:"N/A", electricallyFused:"N/A", correctValving:"N/A", isolationAvailable:"N/A", boilerPlantroom:"N/A", heatExchanger:"N/A", ignition:"N/A", gasValve:"N/A", fan:"N/A", safetyDevice:"N/A", controlBox:"N/A", burnersAndPilot:"N/A", fuelPressure:"N/A", burnerWashed:"N/A", pilotAssembly:"N/A", ignitionSystem:"N/A", burnerFan:"N/A", heatExchangerFlueways:"N/A", fuelElectrical:"N/A", additionalNotes:"", sparesRequired:"", coCo2Ratio:"", dataProtection:false, customerDeclaration:"" });
+  const [serviceData, setServiceData] = useState(defaultServiceData());
   const [bsSigData, setBsSigData] = useState({});
   const [bsEngData, setBsEngData] = useState({ companyName:"West Lothian Gas Ltd", companyAddr:"18 Mauldeth Rd Broxburn", companyPostcode:"EH52 6FB", companyTel:"07961768920", gasSafeNo:"927997", engineerName:"Andrew King-Page", gasId:"5927846" });
 
   // Gas Works state
   const [gwSubScreen, setGwSubScreen] = useState(null);
-  const [gwData, setGwData] = useState({ project:"", date:todayISO(), address:"", workType:"Kitchen Refurb", visit1Date:todayISO(), visit2Date:todayISO(), enablingNotes:"", signerName:"Andrew King-Page", appliances:[], meterBoxLocation:null, applianceLocations:{} });
+  const [gwData, setGwData] = useState(defaultGwData());
 
   // Gas Isolation state
   const [giSubScreen, setGiSubScreen] = useState(null);
-  const [giData, setGiData] = useState({ contractName:"", contactNo:"", date:todayISO(), time:"", gasEngineerName:"Andrew King-Page", subcontractorName:"", propertyName:"", gasSafeNo:"927997", scopeOfWorks:"", scopingSurveyCompleted:"Yes", locationOfWork:"", appliancesToIsolate:"", appliancesIsolated:"", gasCertType:"Gas safety certificate", gasCertNo:"", precautions:"", hazardsAware:"Yes", hazardsDetail:"RIAMS have been read\nCheck all works and any near appliances", certIssuedHow:"", contractorName:"Andrew King-Page and D S Plumbing Solutions", activityType:"", coDetectors:"", permitReceiverName:"", permitReceiverDatetime:"", appliancesMadeLive:"", engineerName:"Andrew King-Page", closeCertType:"Gas Safety Certificate", closeCertNo:"", gasCertIssuedHow:"Email", closeOutPermitName:"", closeOutDatetime:"", permitIssuerName:"Wates", permitIssuerDatetime:"", permitReceiverName2:"Alect", permitReceiverDatetime2:"", engineerSignDatetime:"", watesSiteManager:"Dean Tanner", watesSignDatetime:"", engineerSigImage:null });
+  const [giData, setGiData] = useState(defaultGiData());
 
   const goHome = () => { setScreen("home"); setSubScreen(null); };
 
@@ -8412,7 +8428,7 @@ function App() {
   if (quoteToInvoiceDraft !== null) return <InvoiceWizard sourceRecord={null} prefillData={quoteToInvoiceDraft} isEditing={false} onSave={(invData)=>{ setInvoices(prev=>[...prev, invData]); setQuoteToInvoiceDraft(null); alert("✅ Invoice created from quote!"); }} onClose={()=>setQuoteToInvoiceDraft(null)} invoiceRecords={invoices}/>;
 
   if (screen === "newJob") return <NewJobScreen onBack={()=>setScreen("home")} onHome={goHome}
-    onSelect={job => { if(job==="Gas Safety Certificate") { setScreen("gsc"); setSubScreen("fileRef"); } else if(job==="Boiler Service") { setEditingBsIndex(null); setScreen("bs"); setBsSubScreen("fileRef"); } else if(job==="Gas Works") { setEditingGwIndex(null); setScreen("gasWorks"); setGwSubScreen("fileRef"); } else if(job==="Gas Isolation") { setScreen("gasIsolation"); setGiSubScreen("form"); } else if(job==="Invoice") { setInvoiceWizardOpen(true); } else if(job==="Quote") { setQuoteWizardOpen(true); } else if(job==="Warning Notice") { setScreen("warningNotice"); setWnSubScreen("fileRef"); } else alert(`${job} coming soon`); }}/>
+    onSelect={job => { if(job==="Gas Safety Certificate") { setCertData(defaultCertData()); setAppliances([]); setFaults([]); setFinalChecks({}); setSignatureData({}); setScreen("gsc"); setSubScreen("fileRef"); } else if(job==="Boiler Service") { setServiceData(defaultServiceData()); setBsSigData({}); setEditingBsIndex(null); setScreen("bs"); setBsSubScreen("fileRef"); } else if(job==="Gas Works") { setGwData(defaultGwData()); setEditingGwIndex(null); setScreen("gasWorks"); setGwSubScreen("fileRef"); } else if(job==="Gas Isolation") { setGiData(defaultGiData()); setScreen("gasIsolation"); setGiSubScreen("form"); } else if(job==="Invoice") { setInvoiceWizardOpen(true); } else if(job==="Quote") { setQuoteWizardOpen(true); } else if(job==="Warning Notice") { setScreen("warningNotice"); setWnSubScreen("fileRef"); } else alert(`${job} coming soon`); }}/>
 
   if (screen === "gasWorks") {
     if (gwSubScreen === "fileRef") return (
