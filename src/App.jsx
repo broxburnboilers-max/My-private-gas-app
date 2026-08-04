@@ -5328,7 +5328,7 @@ function GasSafetyCertsScreen({ records, onBack, onHome, onDelete, onCreateInvoi
     </div>
   );
 }
-function BoilerServiceRecordsScreen({ records, onBack, onHome, onDelete, onCreateInvoice, onUpdateRecord }) {
+function BoilerServiceRecordsScreen({ records, onBack, onHome, onDelete, onCreateInvoice, onUpdateRecord, onEdit }) {
   const [selected, setSelected] = useState(null);
   const [viewing, setViewing] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -5455,6 +5455,7 @@ function BoilerServiceRecordsScreen({ records, onBack, onHome, onDelete, onCreat
           onCopyToInvoice={()=>{ setInvoiceFor(selected); setSelected(null); }}
           isPinned={bsRecords[selected]?.pinnedReminder}
           onPinReminder={()=>{ const r=bsRecords[selected]; if(onUpdateRecord) onUpdateRecord(r._origIdx,{...r,pinnedReminder:!r.pinnedReminder}); setSelected(null); }}
+          onEdit={onEdit ? ()=>{ onEdit(bsRecords[selected]); setSelected(null); } : undefined}
           onDelete={()=>{ setConfirmDelete(selected); setSelected(null); }}/>
       )}
       {confirmDelete !== null && (
@@ -6055,12 +6056,12 @@ function RemindersScreen({ records, onBack, onHome, engineerData }) {
   );
 }
 
-function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, onEditGi, invoices, onCreateInvoice, onDeleteInvoice, onMarkPaid, quotes, onDeleteQuote, onConvertQuoteToInvoice, onImportInvoices, onImportQuotes, onImportReports, onImportFolders, engineerData, accountReports, onDeleteReport, yearlyReports, onDeleteYearly, onRebuildYearly, onUpdateReport, gscFolders, onAddFolder, onRenameFolder, onDeleteFolder, onUpdateRecord, onEditInvoice, onEditQuote }) {
+function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, onEditGi, onEditBs, invoices, onCreateInvoice, onDeleteInvoice, onMarkPaid, quotes, onDeleteQuote, onConvertQuoteToInvoice, onImportInvoices, onImportQuotes, onImportReports, onImportFolders, engineerData, accountReports, onDeleteReport, yearlyReports, onDeleteYearly, onRebuildYearly, onUpdateReport, gscFolders, onAddFolder, onRenameFolder, onDeleteFolder, onUpdateRecord, onEditInvoice, onEditQuote }) {
   const [folder, setFolder] = useState(null);
 
   if (folder === "reminders") return <RemindersScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} engineerData={engineerData}/>;
   if (folder === "gsc") return <GasSafetyCertsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete} onCreateInvoice={onCreateInvoice} gscFolders={gscFolders} onAddFolder={onAddFolder} onRenameFolder={onRenameFolder} onDeleteFolder={onDeleteFolder} onUpdateRecord={onUpdateRecord}/>;
-  if (folder === "bs") return <BoilerServiceRecordsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete} onCreateInvoice={onCreateInvoice} onUpdateRecord={onUpdateRecord}/>;
+  if (folder === "bs") return <BoilerServiceRecordsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete} onCreateInvoice={onCreateInvoice} onUpdateRecord={onUpdateRecord} onEdit={onEditBs}/>;
   if (folder === "gw") return <GasWorksRecordsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete} onEdit={onEditGw} onCreateInvoice={onCreateInvoice}/>;
   if (folder === "gi") return <GasIsolationRecordsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete} onEdit={onEditGi} onCreateInvoice={onCreateInvoice}/>;
   if (folder === "wn") return <WarningNoticeRecordsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete}/>;
@@ -8172,6 +8173,8 @@ function App() {
   const [editingInvoiceIndex, setEditingInvoiceIndex] = useState(null);
   const [editingQuoteIndex, setEditingQuoteIndex] = useState(null);
   const [quoteToInvoiceDraft, setQuoteToInvoiceDraft] = useState(null);
+  const [editingBsIndex, setEditingBsIndex] = useState(null);
+  const [editingGwIndex, setEditingGwIndex] = useState(null);
 
   // Persist records to localStorage whenever they change
   useEffect(() => {
@@ -8303,8 +8306,9 @@ function App() {
       for(const n of imported){ const idx=merged.findIndex(e=>e.savedAt===n.savedAt); if(idx>=0) merged[idx]={...merged[idx],...n}; else merged.push(n); }
       return merged;
     })}
-    onEditGw={(rec)=>{ setGwData(rec.gwData); setScreen("gasWorks"); setGwSubScreen("form"); }}
+    onEditGw={(rec)=>{ setGwData(rec.gwData); setEditingGwIndex(rec._origIdx); setScreen("gasWorks"); setGwSubScreen("form"); }}
     onEditGi={(rec)=>{ setGiData(rec.giData); setScreen("gasIsolation"); setGiSubScreen("form"); }}
+    onEditBs={(rec)=>{ setServiceData(rec.serviceData); setBsSigData(rec.bsSigData||{}); setBsEngData(rec.bsEngData||{}); setEditingBsIndex(rec._origIdx); setScreen("bs"); setBsSubScreen("fileRef"); }}
     invoices={invoices}
     onCreateInvoice={(invData)=>{ setInvoices(prev=>[...prev, invData]); alert("✅ Invoice saved to Invoices folder!"); }}
     onDeleteInvoice={(i)=>setInvoices(prev=>prev.filter((_,idx)=>idx!==i))}
@@ -8408,7 +8412,7 @@ function App() {
   if (quoteToInvoiceDraft !== null) return <InvoiceWizard sourceRecord={null} prefillData={quoteToInvoiceDraft} isEditing={false} onSave={(invData)=>{ setInvoices(prev=>[...prev, invData]); setQuoteToInvoiceDraft(null); alert("✅ Invoice created from quote!"); }} onClose={()=>setQuoteToInvoiceDraft(null)} invoiceRecords={invoices}/>;
 
   if (screen === "newJob") return <NewJobScreen onBack={()=>setScreen("home")} onHome={goHome}
-    onSelect={job => { if(job==="Gas Safety Certificate") { setScreen("gsc"); setSubScreen("fileRef"); } else if(job==="Boiler Service") { setScreen("bs"); setBsSubScreen("fileRef"); } else if(job==="Gas Works") { setScreen("gasWorks"); setGwSubScreen("fileRef"); } else if(job==="Gas Isolation") { setScreen("gasIsolation"); setGiSubScreen("form"); } else if(job==="Invoice") { setInvoiceWizardOpen(true); } else if(job==="Quote") { setQuoteWizardOpen(true); } else if(job==="Warning Notice") { setScreen("warningNotice"); setWnSubScreen("fileRef"); } else alert(`${job} coming soon`); }}/>
+    onSelect={job => { if(job==="Gas Safety Certificate") { setScreen("gsc"); setSubScreen("fileRef"); } else if(job==="Boiler Service") { setEditingBsIndex(null); setScreen("bs"); setBsSubScreen("fileRef"); } else if(job==="Gas Works") { setEditingGwIndex(null); setScreen("gasWorks"); setGwSubScreen("fileRef"); } else if(job==="Gas Isolation") { setScreen("gasIsolation"); setGiSubScreen("form"); } else if(job==="Invoice") { setInvoiceWizardOpen(true); } else if(job==="Quote") { setQuoteWizardOpen(true); } else if(job==="Warning Notice") { setScreen("warningNotice"); setWnSubScreen("fileRef"); } else alert(`${job} coming soon`); }}/>
 
   if (screen === "gasWorks") {
     if (gwSubScreen === "fileRef") return (
@@ -8423,7 +8427,18 @@ function App() {
       </div>
     );
     if (gwSubScreen === "form") return <GasWorksForm data={gwData} onChange={setGwData} onBack={()=>setGwSubScreen("fileRef")} onHome={goHome}
-      onSave={(gwFinal)=>{ const savedAt = new Date().toISOString(); setRecords(r=>[...r,{type:"gw",gwData:gwFinal,savedAt}]); alert("✅ Gas Works record saved to Records!"); setScreen("home"); setGwSubScreen(null); }}/>;
+      onSave={(gwFinal)=>{
+        if (editingGwIndex !== null) {
+          setRecords(r=>r.map((rec,idx)=> idx===editingGwIndex ? {...rec, gwData:gwFinal} : rec));
+          setEditingGwIndex(null);
+          alert("✅ Gas Works record updated!");
+        } else {
+          const savedAt = new Date().toISOString();
+          setRecords(r=>[...r,{type:"gw",gwData:gwFinal,savedAt}]);
+          alert("✅ Gas Works record saved to Records!");
+        }
+        setScreen("home"); setGwSubScreen(null);
+      }}/>;
   }
 
 
@@ -8504,11 +8519,18 @@ function App() {
         {bsShowOptions && <BSOptionsMenu
           onPreview={()=>{setBsShowOptions(false);setBsShowPDF(true);}}
           onSave={async ()=>{
-            const savedAt = new Date().toISOString();
-            setRecords(r=>[...r,{type:"bs",serviceData,bsSigData,bsEngData,savedAt}]);
-            setBsShowOptions(false);
-            alert("\u2705 Service record saved to Records!");
-            await createCalendarReminder(serviceData);
+            if (editingBsIndex !== null) {
+              setRecords(r=>r.map((rec,idx)=> idx===editingBsIndex ? {...rec, serviceData, bsSigData, bsEngData} : rec));
+              setEditingBsIndex(null);
+              setBsShowOptions(false);
+              alert("\u2705 Service record updated!");
+            } else {
+              const savedAt = new Date().toISOString();
+              setRecords(r=>[...r,{type:"bs",serviceData,bsSigData,bsEngData,savedAt}]);
+              setBsShowOptions(false);
+              alert("\u2705 Service record saved to Records!");
+              await createCalendarReminder(serviceData);
+            }
           }}
           onClose={()=>setBsShowOptions(false)}/>}
       </>
