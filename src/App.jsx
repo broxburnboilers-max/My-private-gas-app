@@ -8317,6 +8317,18 @@ function App() {
   if (showPDF) return <PDFPreview certData={certData} appliances={appliances} faults={faults} finalChecks={finalChecks} signatureData={signatureData} engineerData={engineerData} onClose={()=>setShowPDF(false)}/>;
 
   if (screen === "login") return <LoginScreen onUnlock={()=>setScreen("home")}/>;
+
+  // These wizard/edit overlays must be checked before any `screen === "..."`
+  // branches below (e.g. "records") because opening them (via action-sheet
+  // buttons on the Records screen) only sets this local state — it does not
+  // change `screen` itself. If a screen-based branch were checked first, it
+  // would keep matching and the overlay would never render.
+  if (invoiceWizardOpen) return <InvoiceWizard sourceRecord={null} onSave={(invData)=>{ setInvoices(prev=>[...prev, invData]); alert("✅ Invoice saved to Invoices folder!"); setInvoiceWizardOpen(false); goHome(); }} onClose={()=>{ setInvoiceWizardOpen(false); setScreen("newJob"); }} invoiceRecords={invoices}/>;
+  if (quoteWizardOpen) return <QuoteWizard sourceRecord={null} onSave={(qData)=>{ setQuotes(prev=>[...prev,qData]); alert("✅ Quote saved to Quotes folder!"); setQuoteWizardOpen(false); goHome(); }} onClose={()=>{ setQuoteWizardOpen(false); setScreen("newJob"); }}/>;
+  if (editingInvoiceIndex !== null) return <InvoiceWizard sourceRecord={null} prefillData={invoices[editingInvoiceIndex]} isEditing={true} onSave={(invData)=>{ setInvoices(prev=>prev.map((inv,idx)=>idx===editingInvoiceIndex?invData:inv)); setEditingInvoiceIndex(null); alert("✅ Invoice updated!"); }} onClose={()=>setEditingInvoiceIndex(null)} invoiceRecords={invoices}/>;
+  if (editingQuoteIndex !== null) return <QuoteWizard sourceRecord={null} prefillData={quotes[editingQuoteIndex]} isEditing={true} onSave={(qData)=>{ setQuotes(prev=>prev.map((q,idx)=>idx===editingQuoteIndex?qData:q)); setEditingQuoteIndex(null); alert("✅ Quote updated!"); }} onClose={()=>setEditingQuoteIndex(null)}/>;
+  if (quoteToInvoiceDraft !== null) return <InvoiceWizard sourceRecord={null} prefillData={quoteToInvoiceDraft} isEditing={false} onSave={(invData)=>{ setInvoices(prev=>[...prev, invData]); setQuoteToInvoiceDraft(null); alert("✅ Invoice created from quote!"); }} onClose={()=>setQuoteToInvoiceDraft(null)} invoiceRecords={invoices}/>;
+
   if (screen === "records") return <RecordsScreen records={records} onBack={()=>setScreen("home")} onHome={goHome} onDelete={(i)=>setRecords(r=>r.filter((_,idx)=>idx!==i))} onImport={(imported)=>setRecords(prev=>{
       const merged=[...prev];
       for(const n of imported){ const idx=merged.findIndex(e=>e.savedAt===n.savedAt); if(idx>=0) merged[idx]={...merged[idx],...n}; else merged.push(n); }
@@ -8421,12 +8433,6 @@ function App() {
       document.head.appendChild(s);
     }
   }}/>;
-  if (quoteWizardOpen) return <QuoteWizard sourceRecord={null} onSave={(qData)=>{ setQuotes(prev=>[...prev,qData]); alert("✅ Quote saved to Quotes folder!"); setQuoteWizardOpen(false); goHome(); }} onClose={()=>{ setQuoteWizardOpen(false); setScreen("newJob"); }}/>;
-  if (invoiceWizardOpen) return <InvoiceWizard sourceRecord={null} onSave={(invData)=>{ setInvoices(prev=>[...prev, invData]); alert("✅ Invoice saved to Invoices folder!"); setInvoiceWizardOpen(false); goHome(); }} onClose={()=>{ setInvoiceWizardOpen(false); setScreen("newJob"); }} invoiceRecords={invoices}/>;
-  if (editingInvoiceIndex !== null) return <InvoiceWizard sourceRecord={null} prefillData={invoices[editingInvoiceIndex]} isEditing={true} onSave={(invData)=>{ setInvoices(prev=>prev.map((inv,idx)=>idx===editingInvoiceIndex?invData:inv)); setEditingInvoiceIndex(null); alert("✅ Invoice updated!"); }} onClose={()=>setEditingInvoiceIndex(null)} invoiceRecords={invoices}/>;
-  if (editingQuoteIndex !== null) return <QuoteWizard sourceRecord={null} prefillData={quotes[editingQuoteIndex]} isEditing={true} onSave={(qData)=>{ setQuotes(prev=>prev.map((q,idx)=>idx===editingQuoteIndex?qData:q)); setEditingQuoteIndex(null); alert("✅ Quote updated!"); }} onClose={()=>setEditingQuoteIndex(null)}/>;
-  if (quoteToInvoiceDraft !== null) return <InvoiceWizard sourceRecord={null} prefillData={quoteToInvoiceDraft} isEditing={false} onSave={(invData)=>{ setInvoices(prev=>[...prev, invData]); setQuoteToInvoiceDraft(null); alert("✅ Invoice created from quote!"); }} onClose={()=>setQuoteToInvoiceDraft(null)} invoiceRecords={invoices}/>;
-
   if (screen === "newJob") return <NewJobScreen onBack={()=>setScreen("home")} onHome={goHome}
     onSelect={job => { if(job==="Gas Safety Certificate") { setCertData(defaultCertData()); setAppliances([]); setFaults([]); setFinalChecks({}); setSignatureData({}); setScreen("gsc"); setSubScreen("fileRef"); } else if(job==="Boiler Service") { setServiceData(defaultServiceData()); setBsSigData({}); setEditingBsIndex(null); setScreen("bs"); setBsSubScreen("fileRef"); } else if(job==="Gas Works") { setGwData(defaultGwData()); setEditingGwIndex(null); setScreen("gasWorks"); setGwSubScreen("fileRef"); } else if(job==="Gas Isolation") { setGiData(defaultGiData()); setScreen("gasIsolation"); setGiSubScreen("form"); } else if(job==="Invoice") { setInvoiceWizardOpen(true); } else if(job==="Quote") { setQuoteWizardOpen(true); } else if(job==="Warning Notice") { setScreen("warningNotice"); setWnSubScreen("fileRef"); } else alert(`${job} coming soon`); }}/>
 
