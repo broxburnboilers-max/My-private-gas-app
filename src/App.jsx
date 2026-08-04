@@ -40,6 +40,29 @@ function defaultGwData() {
 function defaultGiData() {
   return { contractName:"", contactNo:"", date:todayISO(), time:"", gasEngineerName:"Andrew King-Page", subcontractorName:"", propertyName:"", gasSafeNo:"927997", scopeOfWorks:"", scopingSurveyCompleted:"Yes", locationOfWork:"", appliancesToIsolate:"", appliancesIsolated:"", gasCertType:"Gas safety certificate", gasCertNo:"", precautions:"", hazardsAware:"Yes", hazardsDetail:"RIAMS have been read\nCheck all works and any near appliances", certIssuedHow:"", contractorName:"Andrew King-Page and D S Plumbing Solutions", activityType:"", coDetectors:"", permitReceiverName:"", permitReceiverDatetime:"", appliancesMadeLive:"", engineerName:"Andrew King-Page", closeCertType:"Gas Safety Certificate", closeCertNo:"", gasCertIssuedHow:"Email", closeOutPermitName:"", closeOutDatetime:"", permitIssuerName:"Wates", permitIssuerDatetime:"", permitReceiverName2:"Alect", permitReceiverDatetime2:"", engineerSignDatetime:"", watesSiteManager:"Dean Tanner", watesSignDatetime:"", engineerSigImage:null };
 }
+function defaultBmkData() {
+  return {
+    certNo:"", notificationNo:"", boilerSerial:"",
+    clientName:"", clientTel:"", clientAddr1:"", clientAddr2:"", clientAddr3:"", clientPostcode:"", clientEmail:"",
+    instName:"", instAddr1:"", instAddr2:"", instAddr3:"", instPostcode:"", instTel:"",
+    boilerMake:"", boilerModel:"",
+    ctrlRoomStat:"No", ctrlProgRoom:"No", ctrlLoadWeather:"No", ctrlOptStart:"No",
+    ctrlCylStat:"No", ctrlCombi:"No",
+    ctrlHeatZone:"Not Fitted", ctrlHotZone:"Not Fitted",
+    ctrlBypass:"Not Fitted", ctrlTRV:"No", ctrlInterlock:"No",
+    sysFlush:"No", sysCleaner:"", sysInhibitor:"", sysLitres:"", sysPrimaryFilter:"No",
+    sysHardWater:"No", sysScaleType:"", sysScaleReducer:"No",
+    chGasRateFt:"", chGasRateM3:"", chPressure:"", chFlowTemp:"", chReturnTemp:"",
+    hwGasRateFt:"", hwGasRateM3:"", hwPressure:"", hwColdInlet:"", hwOutletTemp:"", hwFlowRate:"", hwCheckedAll:"No",
+    coMin:"", coMax:"", co2Min:"", co2Max:"", ratioMin:"", ratioMax:"",
+    condensateDrain:"No", finalBuildingRegs:"No", finalLiterature:"No", finalDemonstrated:"No",
+    finalCoCo2:"No", finalCommissioned:"No",
+    services: Array(10).fill(null).map(()=>({ date:"", engineerName:"", companyName:"", tel:"", gasSafeNo:"", coMaxRate:"", co2MaxRate:"", coMinRate:"", co2MinRate:"", comments:"", signature:"" })),
+    dataProtection:false,
+    sigEngineerImg:null, sigEngineerName:"", sigDate:todayISO(),
+    sigCustomerImg:null, sigCustomerName:"", sigCustomerDate:todayISO(),
+  };
+}
 // Converts UK dates (DD/MM/YY or DD/MM/YYYY) and ISO dates to YYYY-MM-DD.
 // Returns empty string if unparseable.
 function normaliseDate(str) {
@@ -1610,6 +1633,7 @@ const JOB_TYPES = [
   { label:"Warning Notice", icon:"⚠️" },
   { label:"Gas Works", icon:"🔩" },
   { label:"Gas Isolation", icon:"🚫" },
+  { label:"Benchmark Commissioning", icon:"🔥" },
   { label:"Invoice", icon:"💷" },
   { label:"Quote", icon:"📝" },
 ];
@@ -2873,6 +2897,7 @@ function BatchDownloader({ queue, onDone }) {
     if (item.type === "gw")  return <GasWorksPDFPreview key={key} form={r.gwData} onClose={()=>{}} autoDownload onDownloadDone={stableAdvance}/>;
     if (item.type === "gi")  return <GasIsolationPDFPreview key={key} form={r.giData} onClose={()=>{}} autoDownload onDownloadDone={stableAdvance}/>;
     if (item.type === "wn")  return <WNPDFPreview key={key} wnFormData={{...r.wnFormData, issueDate:r.wnEngData?.issueDate, issueTime:r.wnEngData?.issueTime}} wnEngData={r.wnEngData} onClose={()=>{}} autoDownload onDownloadDone={stableAdvance}/>;
+    if (item.type === "benchmark")  return <BenchmarkPDF key={key} bmkData={r.bmkData} engineerData={r.bmkEngData} onClose={()=>{}} autoDownload onDownloadDone={stableAdvance}/>;
     if (item.type === "inv")  return <InvoicePDFPreview key={key} invoiceData={r} onClose={()=>{}} onSave={()=>{}} autoDownload onDownloadDone={stableAdvance}/>;
     return null;
   };
@@ -3460,6 +3485,23 @@ function InvoiceWizard({ sourceRecord, onSave, onClose, invoiceRecords, prefillD
         instName: r.giData?.contractName || "",
         instAddr1: r.giData?.propertyName || "",
         instAddr2: "", instAddr3: "", instPostcode: "", instTel: "",
+      };
+    }
+    if (r.type === "benchmark") {
+      return {
+        clientName: r.bmkData?.clientName || "",
+        clientAddr1: r.bmkData?.clientAddr1 || "",
+        clientAddr2: r.bmkData?.clientAddr2 || "",
+        clientAddr3: r.bmkData?.clientAddr3 || "",
+        clientPostcode: r.bmkData?.clientPostcode || "",
+        clientTel: r.bmkData?.clientTel || "",
+        clientEmail: r.bmkData?.clientEmail || "",
+        instName: r.bmkData?.instName || r.bmkData?.clientName || "",
+        instAddr1: r.bmkData?.instAddr1 || r.bmkData?.clientAddr1 || "",
+        instAddr2: r.bmkData?.instAddr2 || r.bmkData?.clientAddr2 || "",
+        instAddr3: r.bmkData?.instAddr3 || r.bmkData?.clientAddr3 || "",
+        instPostcode: r.bmkData?.instPostcode || r.bmkData?.clientPostcode || "",
+        instTel: r.bmkData?.instTel || r.bmkData?.clientTel || "",
       };
     }
     return {};
@@ -5705,6 +5747,119 @@ function GasWorksRecordsScreen({ records, onBack, onHome, onDelete, onEdit, onCr
 }
 
 
+function BenchmarkRecordsScreen({ records, onBack, onHome, onDelete, onEdit, onCreateInvoice }) {
+  const [selected, setSelected] = useState(null);
+  const [viewing, setViewing] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [confirmBatchDelete, setConfirmBatchDelete] = useState(false);
+  const [multiSelect, setMultiSelect] = useState(false);
+  const [checkedItems, setCheckedItems] = useState([]);
+  const [batchQueue, setBatchQueue] = useState(null);
+  const [invoiceFor, setInvoiceFor] = useState(null);
+  const BMK_COLOR = "#6d9b3a";
+
+  const bmkRecords = records.map((r,i)=>({...r,_origIdx:i})).filter(r=>r.type==="benchmark");
+
+  if (invoiceFor !== null) {
+    return <InvoiceWizard sourceRecord={bmkRecords[invoiceFor]} onSave={(invData)=>{ onCreateInvoice(invData); setInvoiceFor(null); }} onClose={()=>setInvoiceFor(null)} />;
+  }
+
+  if (batchQueue !== null) {
+    return <BatchDownloader queue={batchQueue} onDone={()=>{ setBatchQueue(null); setMultiSelect(false); setCheckedItems([]); }}/>;
+  }
+
+  if (viewing !== null) {
+    const r = bmkRecords[viewing];
+    return <BenchmarkPDF bmkData={r.bmkData} engineerData={r.bmkEngData} onClose={()=>setViewing(null)}/>;
+  }
+
+  const toggleCheck = (i) => setCheckedItems(prev => prev.includes(i) ? prev.filter(x=>x!==i) : [...prev, i]);
+
+  const DownloadBtn = () => (
+    <button onClick={()=>{ setMultiSelect(m=>{ if(m) setCheckedItems([]); return !m; }); }}
+      style={{ background: multiSelect?"rgba(255,255,255,0.35)":"rgba(255,255,255,0.18)", border:"none", borderRadius:20, padding:"7px 14px", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M5 7l3 3 3-3M2 12h12" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+      {multiSelect ? "Cancel" : "Download"}
+    </button>
+  );
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:LIGHT_BG, fontFamily:"'Segoe UI',sans-serif" }}>
+      <Header title="Benchmark Commissioning" onBack={onBack} right={<DownloadBtn/>}/>
+      {multiSelect && (
+        <div style={{ background:"#eef5e6", padding:"8px 16px", fontSize:13, color:BMK_COLOR, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+          <span>{checkedItems.length} selected</span>
+          <button onClick={()=>setCheckedItems(checkedItems.length===bmkRecords.length?[]:[...bmkRecords.map((_,i)=>i)])}
+            style={{ background:"none", border:`1px solid ${BMK_COLOR}`, borderRadius:12, padding:"3px 10px", color:BMK_COLOR, fontWeight:600, fontSize:12, cursor:"pointer" }}>
+            {checkedItems.length===bmkRecords.length?"Deselect All":"Select All"}
+          </button>
+        </div>
+      )}
+      <div style={{ flex:1, overflowY:"auto", padding:16 }}>
+        {bmkRecords.length===0 && <div style={{ textAlign:"center", color:"#aaa", marginTop:60, fontSize:15 }}>No Benchmark Commissioning records yet</div>}
+        {bmkRecords.map((r,i)=>(
+          <div key={i} onClick={()=> multiSelect ? toggleCheck(i) : setSelected(i)}
+            style={{ background:"#fff", borderRadius:12, padding:"14px 16px", marginBottom:10, boxShadow:"0 2px 8px rgba(0,0,0,0.06)", borderLeft:`4px solid ${BMK_COLOR}`, cursor:"pointer", display:"flex", alignItems:"center", gap:12,
+              outline: multiSelect && checkedItems.includes(i) ? `2px solid ${BMK_COLOR}` : "none" }}>
+            {multiSelect && (
+              <div style={{ width:22, height:22, borderRadius:6, border:`2px solid ${BMK_COLOR}`, background: checkedItems.includes(i)?BMK_COLOR:"#fff", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                {checkedItems.includes(i) && <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 7l3.5 3.5L11 3" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+              </div>
+            )}
+            <div style={{ flex:1 }}>
+              <div style={{ fontWeight:700, fontSize:15, color:"#222" }}>{r.bmkData?.instAddr1 || r.bmkData?.clientName || "No address"}</div>
+              <div style={{ fontSize:13, color:"#666", marginTop:3 }}>Ref: {r.bmkData?.certNo || "—"}</div>
+              <div style={{ fontSize:12, color:BMK_COLOR, marginTop:3 }}>🔥 Benchmark Commissioning · {r.savedAt ? new Date(r.savedAt).toLocaleDateString("en-GB") : "No date"}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+      {multiSelect && checkedItems.length > 0 && (
+        <div style={{ padding:"12px 16px", background:"#fff", borderTop:"1px solid #dde", flexShrink:0 }}>
+          <button onClick={()=> setBatchQueue([...checkedItems].sort((a,b)=>a-b).map(i=>({ type:"benchmark", record:bmkRecords[i], label: bmkRecords[i]?.bmkData?.instAddr1 || bmkRecords[i]?.bmkData?.clientName || "Benchmark Commissioning" })))}
+            style={{ width:"100%", padding:"13px", background:BMK_COLOR, color:"#fff", border:"none", borderRadius:12, fontWeight:700, fontSize:15, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8, marginBottom:10 }}>
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 2v10M5 8l4 4 4-4M2 14h14" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            Download Selected ({checkedItems.length})
+          </button>
+          <button onClick={()=>setConfirmBatchDelete(true)}
+            style={{ width:"100%", padding:"13px", background:"#c00", color:"#fff", border:"none", borderRadius:12, fontWeight:700, fontSize:15, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+            🗑 Delete ({checkedItems.length})
+          </button>
+        </div>
+      )}
+      {confirmBatchDelete && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:3000, padding:20 }}>
+          <div style={{ background:"#fff", borderRadius:16, width:"100%", maxWidth:340, overflow:"hidden", boxShadow:"0 20px 60px rgba(0,0,0,0.3)" }}>
+            <div style={{ padding:"20px 20px 12px", fontWeight:700, fontSize:16, textAlign:"center", color:"#222" }}>Delete {checkedItems.length} record{checkedItems.length!==1?"s":""}?</div>
+            <div style={{ padding:"0 20px 20px", fontSize:14, color:"#666", textAlign:"center" }}>This cannot be undone.</div>
+            <div style={{ display:"flex", borderTop:"1px solid #eee" }}>
+              <button onClick={()=>setConfirmBatchDelete(false)}
+                style={{ flex:1, padding:16, background:"#fff", color:"#444", border:"none", fontWeight:700, fontSize:15, cursor:"pointer", borderRight:"1px solid #eee" }}>No</button>
+              <button onClick={()=>{ const idxs=[...checkedItems].sort((a,b)=>b-a); for(const i of idxs){ onDelete(bmkRecords[i]._origIdx); } setCheckedItems([]); setMultiSelect(false); setConfirmBatchDelete(false); }}
+                style={{ flex:1, padding:16, background:"#c00", color:"#fff", border:"none", fontWeight:700, fontSize:15, cursor:"pointer" }}>Yes</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {!multiSelect && <BottomBar onHome={onHome}/>}
+      {selected !== null && (
+        <RecordActionSheet
+          title={bmkRecords[selected]?.bmkData?.instAddr1 || bmkRecords[selected]?.bmkData?.clientName || "Benchmark Record"}
+          onClose={()=>setSelected(null)}
+          onPreview={()=>{ setViewing(selected); setSelected(null); }}
+          onDownload={()=>{ setViewing(selected); setSelected(null); }}
+          onCopyToInvoice={()=>{ setInvoiceFor(selected); setSelected(null); }}
+          onEdit={()=>{ onEdit(bmkRecords[selected]); setSelected(null); }}
+          onDelete={()=>{ setConfirmDelete(selected); setSelected(null); }}/>
+      )}
+      {confirmDelete !== null && (
+        <ConfirmDeleteModal onCancel={()=>setConfirmDelete(null)} onConfirm={()=>{ onDelete(bmkRecords[confirmDelete]._origIdx); setConfirmDelete(null); }}/>
+      )}
+    </div>
+  );
+}
+
+
 function GasIsolationRecordsScreen({ records, onBack, onHome, onDelete, onEdit, onCreateInvoice }) {
   const [selected, setSelected] = useState(null);
   const [viewing, setViewing] = useState(null);
@@ -6072,7 +6227,7 @@ function RemindersScreen({ records, onBack, onHome, engineerData }) {
   );
 }
 
-function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, onEditGi, onEditBs, invoices, onCreateInvoice, onDeleteInvoice, onMarkPaid, quotes, onDeleteQuote, onConvertQuoteToInvoice, onImportInvoices, onImportQuotes, onImportReports, onImportFolders, engineerData, accountReports, onDeleteReport, yearlyReports, onDeleteYearly, onRebuildYearly, onUpdateReport, gscFolders, onAddFolder, onRenameFolder, onDeleteFolder, onUpdateRecord, onEditInvoice, onEditQuote }) {
+function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, onEditGi, onEditBs, onEditBmk, invoices, onCreateInvoice, onDeleteInvoice, onMarkPaid, quotes, onDeleteQuote, onConvertQuoteToInvoice, onImportInvoices, onImportQuotes, onImportReports, onImportFolders, engineerData, accountReports, onDeleteReport, yearlyReports, onDeleteYearly, onRebuildYearly, onUpdateReport, gscFolders, onAddFolder, onRenameFolder, onDeleteFolder, onUpdateRecord, onEditInvoice, onEditQuote }) {
   const [folder, setFolder] = useState(null);
 
   if (folder === "reminders") return <RemindersScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} engineerData={engineerData}/>;
@@ -6080,6 +6235,7 @@ function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, 
   if (folder === "bs") return <BoilerServiceRecordsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete} onCreateInvoice={onCreateInvoice} onUpdateRecord={onUpdateRecord} onEdit={onEditBs}/>;
   if (folder === "gw") return <GasWorksRecordsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete} onEdit={onEditGw} onCreateInvoice={onCreateInvoice}/>;
   if (folder === "gi") return <GasIsolationRecordsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete} onEdit={onEditGi} onCreateInvoice={onCreateInvoice}/>;
+  if (folder === "bmk") return <BenchmarkRecordsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete} onEdit={onEditBmk} onCreateInvoice={onCreateInvoice}/>;
   if (folder === "wn") return <WarningNoticeRecordsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete}/>;
   if (folder === "inv") return <InvoicesScreen invoices={invoices} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDeleteInvoice} onMarkPaid={onMarkPaid} onImport={onCreateInvoice} onEdit={onEditInvoice}/>;
   if (folder === "quotes") return <QuotesScreen quotes={quotes||[]} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDeleteQuote} onConvertToInvoice={(i)=>onConvertQuoteToInvoice(i)} onEdit={onEditQuote}/>;
@@ -6156,6 +6312,7 @@ function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, 
   const bsCount = records.filter(r => r.type==="bs").length;
   const gwCount = records.filter(r => r.type==="gw").length;
   const wnCount = records.filter(r => r.type==="wn").length;
+  const bmkCount = records.filter(r => r.type==="benchmark").length;
   const invCount = (invoices||[]).length;
   const quoteCount = (quotes||[]).length;
 
@@ -6180,6 +6337,7 @@ function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, 
     { id:"bs", label:"Boiler Service Records", icon:"🔧", count: bsCount, color: "#1a3a8f" },
     { id:"gw", label:"Gas Works", icon:"🔨", count: gwCount, color: "#b45309" },
     { id:"gi", label:"Gas Isolation", icon:"🚫", count: giCount, color: "#1a7a7a" },
+    { id:"bmk", label:"Benchmark Commissioning", icon:"🔥", count: bmkCount, color: "#6d9b3a" },
     { id:"wn", label:"Warning Notices", icon:"⚠️", count: wnCount, color: "#b91c1c" },
     { id:"inv", label:"Invoices", icon:"💰", count: invCount, color: INV_GREEN_DARK },
     { id:"quotes", label:"Quotes", icon:"📝", count: quoteCount, color: BLUE },
@@ -8154,6 +8312,866 @@ async function postCalendarEvent(token, certData, reminderDateOverride) {
   }
 }
 
+// ─── BENCHMARK COMMISSIONING CHECKLIST ──────────────────────────────────────
+
+const BMK_COLOR = "#6d9b3a";
+
+// Screen 1: File Reference
+function BmkStepFileRef({ data, onChange, onNext, onBack, onHome }) {
+  return (
+    <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:LIGHT_BG }}>
+      <Header title="Gas Boiler Commissioning Checklist" onBack={onBack}/>
+      <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:24 }}>
+        <p style={{ color:"#888", fontFamily:"'Segoe UI',sans-serif", fontSize:14, marginBottom:16 }}>Please enter a file reference</p>
+        <input
+          value={data.certNo||""} onChange={e=>onChange({...data, certNo:e.target.value})}
+          placeholder="Certificate Reference"
+          style={{ width:"100%", maxWidth:360, padding:"14px 18px", borderRadius:12, border:"none", background:"#fff", fontSize:15, fontFamily:"'Segoe UI',sans-serif", boxShadow:"0 2px 12px rgba(0,0,0,0.07)", outline:"none", boxSizing:"border-box" }}
+        />
+      </div>
+      <BottomBar onHome={onHome} onNext={onNext}/>
+    </div>
+  );
+}
+
+// Screen 2: Client + Installation Details
+function BmkStepClientDetails({ data, onChange, onNext, onBack, onHome }) {
+  const [errorMsg, setErrorMsg] = useState("");
+  const copyClientToInst = () => {
+    onChange({...data, instName:data.clientName, instAddr1:data.clientAddr1, instAddr2:data.clientAddr2, instAddr3:data.clientAddr3, instPostcode:data.clientPostcode, instTel:data.clientTel });
+  };
+  const handleContactBtn = async (target) => {
+    setErrorMsg("");
+    const result = await openPhoneContacts((c) => {
+      if (target === "client") onChange({...data, clientName:c.name||data.clientName, clientTel:c.tel||data.clientTel, clientAddr1:c.addr1||data.clientAddr1, clientAddr2:c.addr2||data.clientAddr2, clientAddr3:c.addr3||data.clientAddr3, clientPostcode:c.postcode||data.clientPostcode, clientEmail:c.email||data.clientEmail });
+      else onChange({...data, instName:c.name||data.instName, instTel:c.tel||data.instTel, instAddr1:c.addr1||data.instAddr1, instAddr2:c.addr2||data.instAddr2, instAddr3:c.addr3||data.instAddr3, instPostcode:c.postcode||data.instPostcode });
+    });
+    if (result === "unsupported") setErrorMsg("Contact picker not supported on this device/browser.");
+    else if (result === "blocked") setErrorMsg("Permission denied. Please allow contacts access.");
+  };
+  const contactBtn = (target) => (
+    <button onClick={()=>handleContactBtn(target)} style={{ display:"flex", alignItems:"center", gap:6, background:"rgba(255,255,255,0.18)", border:"1.5px solid rgba(255,255,255,0.6)", borderRadius:20, padding:"5px 14px", color:"#fff", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"'Segoe UI',sans-serif" }}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="white" strokeWidth="2"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="white" strokeWidth="2" strokeLinecap="round"/><circle cx="18" cy="6" r="2" fill="white"/><path d="M21 4l-1.5 1.5M18 3v2M15 4l1.5 1.5" stroke="white" strokeWidth="1.5" strokeLinecap="round"/></svg>
+      Contacts
+    </button>
+  );
+  const copyBtn = (
+    <button onClick={copyClientToInst} style={{ display:"flex", alignItems:"center", gap:6, background:"rgba(255,255,255,0.18)", border:"1.5px solid rgba(255,255,255,0.6)", borderRadius:20, padding:"5px 14px", color:"#fff", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"'Segoe UI',sans-serif" }}>
+      Copy
+    </button>
+  );
+  return (
+    <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:LIGHT_BG }}>
+      <Header title="Client & Installation Details" onBack={onBack}/>
+      <div style={{ flex:1, overflowY:"auto" }}>
+        {errorMsg && <div style={{ padding:"8px 16px", background:"#fdecea", color:"#b91c1c", fontSize:13, fontFamily:"'Segoe UI',sans-serif" }}>{errorMsg}</div>}
+        <SectionHeader title="Client Details" actions={[contactBtn("client")]}/>
+        <FormInput label="" placeholder="Name" value={data.clientName||""} onChange={v=>onChange({...data,clientName:v})}/>
+        <FormInput label="" placeholder="Address line 1" value={data.clientAddr1||""} onChange={v=>onChange({...data,clientAddr1:v})}/>
+        <FormInput label="" placeholder="Address line 2" value={data.clientAddr2||""} onChange={v=>onChange({...data,clientAddr2:v})}/>
+        <FormInput label="" placeholder="Address line 3" value={data.clientAddr3||""} onChange={v=>onChange({...data,clientAddr3:v})}/>
+        <FormInput label="" placeholder="Postcode" value={data.clientPostcode||""} onChange={v=>onChange({...data,clientPostcode:v})}/>
+        <FormInput label="" placeholder="Telephone" value={data.clientTel||""} onChange={v=>onChange({...data,clientTel:v})}/>
+        <FormInput label="" placeholder="Email" value={data.clientEmail||""} onChange={v=>onChange({...data,clientEmail:v})}/>
+        <SectionHeader title="Installation Details" actions={[copyBtn, contactBtn("inst")]}/>
+        <FormInput label="" placeholder="Name" value={data.instName||""} onChange={v=>onChange({...data,instName:v})}/>
+        <FormInput label="" placeholder="Address line 1" value={data.instAddr1||""} onChange={v=>onChange({...data,instAddr1:v})}/>
+        <FormInput label="" placeholder="Address line 2" value={data.instAddr2||""} onChange={v=>onChange({...data,instAddr2:v})}/>
+        <FormInput label="" placeholder="Address line 3" value={data.instAddr3||""} onChange={v=>onChange({...data,instAddr3:v})}/>
+        <FormInput label="" placeholder="Postcode" value={data.instPostcode||""} onChange={v=>onChange({...data,instPostcode:v})}/>
+        <FormInput label="" placeholder="Telephone" value={data.instTel||""} onChange={v=>onChange({...data,instTel:v})}/>
+        <div style={{height:16}}/>
+      </div>
+      <BottomBar onHome={onHome} onNext={onNext}/>
+    </div>
+  );
+}
+
+// Screen 3: Appliance Details
+function BmkStepAppliance({ data, onChange, onNext, onBack, onHome }) {
+  const inp = (label, field) => (
+    <div style={{ display:"flex", alignItems:"center", padding:"8px 16px", borderBottom:"1px solid #e8eaf0", background:"#fff", gap:12 }}>
+      <span style={{ width:140, fontSize:14, color:"#555", fontFamily:"'Segoe UI',sans-serif", flexShrink:0 }}>{label}</span>
+      <input value={data[field]||""} onChange={e=>onChange({...data,[field]:e.target.value})}
+        style={{ flex:1, padding:"8px 10px", border:"1px solid #ddd", borderRadius:4, fontSize:14, fontFamily:"'Segoe UI',sans-serif", outline:"none", background:"#f9f9f9" }}/>
+    </div>
+  );
+  return (
+    <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:LIGHT_BG }}>
+      <Header title="Appliance Details" onBack={onBack}/>
+      <div style={{ flex:1, overflowY:"auto" }}>
+        <div style={{ padding:"12px 16px 4px", fontSize:14, color:"#666", fontFamily:"'Segoe UI',sans-serif" }}>Boiler Details</div>
+        {inp("Boiler Make :", "boilerMake")}
+        {inp("Boiler Model :", "boilerModel")}
+        {inp("Serial Number :", "boilerSerial")}
+        <div style={{height:16}}/>
+      </div>
+      <BottomBar onHome={onHome} onNext={onNext}/>
+    </div>
+  );
+}
+
+// Screen 4: Controls
+function BmkStepControls({ data, onChange, onNext, onBack, onHome }) {
+  const row = (label, field, opts) => (
+    <div style={{ display:"flex", alignItems:"center", padding:"12px 16px", borderBottom:"1px solid #e8eaf0", background:"#fff", gap:8 }}>
+      <span style={{ flex:1, fontSize:14, color:"#444", fontFamily:"'Segoe UI',sans-serif", lineHeight:1.3 }}>{label}</span>
+      <RadioGroup options={opts||["Yes","No"]} value={data[field]||(opts?opts[1]:"No")} onChange={v=>onChange({...data,[field]:v})}/>
+    </div>
+  );
+  const secH = (t) => <div style={{ padding:"10px 16px", fontSize:13, fontWeight:700, color:BMK_COLOR, textTransform:"uppercase", letterSpacing:0.6, background:LIGHT_BG, fontFamily:"'Segoe UI',sans-serif" }}>{t}</div>;
+  return (
+    <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:LIGHT_BG }}>
+      <Header title="Controls" onBack={onBack}/>
+      <div style={{ flex:1, overflowY:"auto" }}>
+        {secH("Time & Temperature Control to Heating")}
+        {row("Room Stat & Programmer/Timer","ctrlRoomStat")}
+        {row("Programmable Room Stat","ctrlProgRoom")}
+        {row("Load/Weather Compensation","ctrlLoadWeather")}
+        {row("Optimum Start Control","ctrlOptStart")}
+        {secH("Time & Temperature Control to Hot Water")}
+        {row("Cylinder Stat & Programmer","ctrlCylStat")}
+        {row("Combi Boiler","ctrlCombi")}
+        {row("Heating Zone Valves","ctrlHeatZone",["Fitted","Not Fitted"])}
+        {row("Hot Water Zone Valves","ctrlHotZone",["Fitted","Not Fitted"])}
+        {row("Automatic Bypass","ctrlBypass",["Fitted","Not Fitted"])}
+        {row("Thermostatic Radiator Valve Fitted","ctrlTRV")}
+        {row("Boiler Interlock","ctrlInterlock")}
+        <div style={{height:16}}/>
+      </div>
+      <BottomBar onHome={onHome} onNext={onNext}/>
+    </div>
+  );
+}
+
+// Screen 5: All Systems
+function BmkStepAllSystems({ data, onChange, onNext, onBack, onHome }) {
+  const row = (label, field) => (
+    <div style={{ display:"flex", alignItems:"center", padding:"12px 16px", borderBottom:"1px solid #e8eaf0", background:"#fff", gap:8 }}>
+      <span style={{ flex:1, fontSize:14, color:"#444", fontFamily:"'Segoe UI',sans-serif", lineHeight:1.3 }}>{label}</span>
+      <RadioGroup options={["Yes","No"]} value={data[field]||"No"} onChange={v=>onChange({...data,[field]:v})}/>
+    </div>
+  );
+  const inp = (label, field) => (
+    <div style={{ padding:"8px 16px", borderBottom:"1px solid #e8eaf0", background:"#fff" }}>
+      <div style={{ fontSize:13, color:"#888", fontFamily:"'Segoe UI',sans-serif", marginBottom:6 }}>{label}</div>
+      <input value={data[field]||""} onChange={e=>onChange({...data,[field]:e.target.value})}
+        style={{ width:"100%", boxSizing:"border-box", padding:"8px 10px", border:"1px solid #ddd", borderRadius:4, fontSize:14, fontFamily:"'Segoe UI',sans-serif", outline:"none", background:"#f9f9f9" }}/>
+    </div>
+  );
+  const secH = (t) => <div style={{ padding:"10px 16px", fontSize:13, fontWeight:700, color:BMK_COLOR, textTransform:"uppercase", letterSpacing:0.6, background:LIGHT_BG, fontFamily:"'Segoe UI',sans-serif" }}>{t}</div>;
+  return (
+    <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:LIGHT_BG }}>
+      <Header title="All Systems" onBack={onBack}/>
+      <div style={{ flex:1, overflowY:"auto" }}>
+        {secH("For All Boilers Confirm the Following")}
+        {row("System flushed in accordance with manufacturers instructions?","sysFlush")}
+        {inp("System cleaner used","sysCleaner")}
+        {inp("Inhibitor used","sysInhibitor")}
+        {inp("Litres used","sysLitres")}
+        {row("Primary water filter installed?","sysPrimaryFilter")}
+        {secH("For Combi Boilers Only")}
+        {row("Fitted in a hard water area (above 220 ppm)?","sysHardWater")}
+        {inp("Scale reducer type (if applicable)","sysScaleType")}
+        {row("Water scale reducer fitted?","sysScaleReducer")}
+        <div style={{height:16}}/>
+      </div>
+      <BottomBar onHome={onHome} onNext={onNext}/>
+    </div>
+  );
+}
+
+// Screen 6: Measure & Record
+function BmkStepMeasure({ data, onChange, onNext, onBack, onHome }) {
+  const inp = (label, field, suffix) => (
+    <div style={{ display:"flex", alignItems:"center", padding:"10px 16px", borderBottom:"1px solid #e8eaf0", background:"#fff", gap:12 }}>
+      <span style={{ flex:1, fontSize:14, color:"#444", fontFamily:"'Segoe UI',sans-serif" }}>{label}</span>
+      <input value={data[field]||""} onChange={e=>onChange({...data,[field]:e.target.value})}
+        style={{ width:90, padding:"8px 10px", border:"1px solid #ddd", borderRadius:4, fontSize:14, fontFamily:"'Segoe UI',sans-serif", outline:"none", textAlign:"right", background:"#f9f9f9" }}/>
+      {suffix && <span style={{ fontSize:12, color:"#888", minWidth:44, fontFamily:"'Segoe UI',sans-serif" }}>{suffix}</span>}
+    </div>
+  );
+  const gasRate = (keyFt, keyM, label) => (
+    <div style={{ padding:"10px 16px", borderBottom:"1px solid #e8eaf0", background:"#fff" }}>
+      <div style={{ fontSize:14, color:"#444", marginBottom:8, fontFamily:"'Segoe UI',sans-serif" }}>{label}</div>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+        <div>
+          <div style={{ fontSize:11, color:"#888", textAlign:"center", marginBottom:4 }}>FT3</div>
+          <input value={data[keyFt]||""} onChange={e=>onChange({...data,[keyFt]:e.target.value})} placeholder="FT3"
+            style={{ width:"100%", padding:"10px", border:"1px solid #ddd", borderRadius:6, fontSize:14, outline:"none", textAlign:"center", boxSizing:"border-box", background:"#f9f9f9" }}/>
+        </div>
+        <div>
+          <div style={{ fontSize:11, color:"#888", textAlign:"center", marginBottom:4 }}>M3</div>
+          <input value={data[keyM]||""} onChange={e=>onChange({...data,[keyM]:e.target.value})} placeholder="M3"
+            style={{ width:"100%", padding:"10px", border:"1px solid #ddd", borderRadius:6, fontSize:14, outline:"none", textAlign:"center", boxSizing:"border-box", background:"#f9f9f9" }}/>
+        </div>
+      </div>
+    </div>
+  );
+  const row = (label, field) => (
+    <div style={{ display:"flex", alignItems:"center", padding:"12px 16px", borderBottom:"1px solid #e8eaf0", background:"#fff", gap:8 }}>
+      <span style={{ flex:1, fontSize:14, color:"#444", fontFamily:"'Segoe UI',sans-serif" }}>{label}</span>
+      <RadioGroup options={["Yes","No"]} value={data[field]||"No"} onChange={v=>onChange({...data,[field]:v})}/>
+    </div>
+  );
+  const secH = (t) => <div style={{ padding:"10px 16px", fontSize:13, fontWeight:700, color:BMK_COLOR, textTransform:"uppercase", letterSpacing:0.6, background:LIGHT_BG, fontFamily:"'Segoe UI',sans-serif" }}>{t}</div>;
+  const co = (label, field) => (
+    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 16px", borderBottom:"1px solid #e8eaf0", background:"#fff" }}>
+      <span style={{ fontSize:13, color:"#444", fontFamily:"'Segoe UI',sans-serif" }}>{label}</span>
+      <input value={data[field]||""} onChange={e=>onChange({...data,[field]:e.target.value})}
+        style={{ width:80, padding:"7px 10px", border:"1px solid #ddd", borderRadius:4, fontSize:13, outline:"none", textAlign:"right", background:"#f9f9f9" }}/>
+    </div>
+  );
+  return (
+    <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:LIGHT_BG }}>
+      <Header title="Measure & Record" onBack={onBack}/>
+      <div style={{ flex:1, overflowY:"auto" }}>
+        {secH("Central Heating Mode")}
+        {gasRate("chGasRateFt","chGasRateM3","Gas Rate (FT3 / M3)")}
+        {inp("Gas inlet / burner operating pressure:","chPressure","mbar")}
+        {inp("Central heating flow temperature:","chFlowTemp","°C")}
+        {inp("Central heating return temperature:","chReturnTemp","°C")}
+        {secH("Hot Water Mode")}
+        {gasRate("hwGasRateFt","hwGasRateM3","Gas Rate (FT3 / M3)")}
+        {inp("Gas inlet / burner operating pressure:","hwPressure","mbar")}
+        {inp("Cold water inlet temperature:","hwColdInlet","°C")}
+        {inp("Hot water outlet temperature:","hwOutletTemp","°C")}
+        {inp("Flow rate:","hwFlowRate","l/min")}
+        {row("Hot water checked at all outlets?","hwCheckedAll")}
+        {secH("Combustion Analysis")}
+        {co("Min CO:","coMin")}
+        {co("Max CO:","coMax")}
+        {co("Min CO2:","co2Min")}
+        {co("Max CO2:","co2Max")}
+        {co("Min CO/CO2 Ratio:","ratioMin")}
+        {co("Max CO/CO2 Ratio:","ratioMax")}
+        <div style={{height:16}}/>
+      </div>
+      <BottomBar onHome={onHome} onNext={onNext}/>
+    </div>
+  );
+}
+
+// Screen 7: Final Checks
+function BmkStepFinalChecks({ data, onChange, onNext, onBack, onHome }) {
+  const row = (label, field) => (
+    <div style={{ display:"flex", alignItems:"center", padding:"12px 16px", borderBottom:"1px solid #e8eaf0", background:"#fff", gap:8 }}>
+      <span style={{ flex:1, fontSize:14, color:"#444", fontFamily:"'Segoe UI',sans-serif", lineHeight:1.3 }}>{label}</span>
+      <RadioGroup options={["Yes","No"]} value={data[field]||"No"} onChange={v=>onChange({...data,[field]:v})}/>
+    </div>
+  );
+  const secH = (t) => <div style={{ padding:"10px 16px", fontSize:13, fontWeight:700, color:BMK_COLOR, textTransform:"uppercase", letterSpacing:0.6, background:LIGHT_BG, fontFamily:"'Segoe UI',sans-serif" }}>{t}</div>;
+  return (
+    <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:LIGHT_BG }}>
+      <Header title="Final Checks" onBack={onBack}/>
+      <div style={{ flex:1, overflowY:"auto" }}>
+        {secH("For Condensing Boilers")}
+        {row("Condensate drain installed in accordance with manufacturers instructions?","condensateDrain")}
+        {secH("For All Installations Confirm the Following")}
+        {row("Heating and hot water complies with current building regulations?","finalBuildingRegs")}
+        {row("Manufacturers literature has been left with the customer?","finalLiterature")}
+        {row("Operation of the appliance has been demonstrated to customer?","finalDemonstrated")}
+        {row("CO/CO2 has been recorded (if required)?","finalCoCo2")}
+        {row("Appliance and associated equipment installed and commissioned per manufacturers instructions?","finalCommissioned")}
+        <div style={{height:16}}/>
+      </div>
+      <BottomBar onHome={onHome} onNext={onNext}/>
+    </div>
+  );
+}
+
+// Screen 8: Service Record (10 entries, optional)
+function BmkStepServices({ data, onChange, onNext, onBack, onHome }) {
+  const services = data.services || Array(10).fill(null).map(()=>({
+    date:"", engineerName:"", companyName:"", tel:"", gasSafeNo:"",
+    coMaxRate:"", co2MaxRate:"", coMinRate:"", co2MinRate:"", comments:"", signature:""
+  }));
+  const update = (i, key, val) => {
+    const s = services.map((svc,j) => j===i ? {...svc,[key]:val} : svc);
+    onChange({...data, services:s});
+  };
+  const inp = (i,key,ph,type) => <input type={type||"text"} value={services[i][key]||""}
+    onChange={e=>update(i,key,e.target.value)} placeholder={ph||""}
+    style={{ width:"100%", boxSizing:"border-box", padding:"9px 11px", border:"1px solid #ddd", borderRadius:8, fontSize:13, outline:"none", marginBottom:2 }}/>;
+  const lbl = t => <div style={{ fontSize:11, fontWeight:600, color:"#555", marginBottom:3, marginTop:8 }}>{t}</div>;
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:LIGHT_BG }}>
+      <Header title="Service Record (Optional)" onBack={onBack}/>
+      <div style={{ flex:1, overflowY:"auto", padding:12 }}>
+        <div style={{ background:"#fffbeb", border:"1.5px solid #f5c400", borderRadius:10, padding:"10px 12px", marginBottom:14, fontSize:13, color:"#444", lineHeight:1.5, fontFamily:"'Segoe UI',sans-serif" }}>
+          📋 The Service Record will be included as page 2 of the PDF. Fill in any services already completed, or leave blank and fill in later.
+        </div>
+        {services.map((svc, i) => (
+          <div key={i} style={{ background:"#fff", borderRadius:10, padding:12, marginBottom:10, boxShadow:"0 2px 8px rgba(0,0,0,0.06)", borderLeft:`4px solid ${BMK_COLOR}` }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+              <div style={{ fontWeight:700, fontSize:14, color:BMK_COLOR, textTransform:"uppercase", letterSpacing:0.6 }}>Service {i+1}</div>
+              {svc.date && <div style={{ fontSize:12, color:"#888" }}>{svc.date}</div>}
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+              <div style={{ gridColumn:"1/-1" }}>{lbl("Date")}<input type="date" value={svc.date||""} onChange={e=>update(i,"date",e.target.value)}
+                style={{ width:"100%", boxSizing:"border-box", padding:"9px 11px", border:"1px solid #ddd", borderRadius:8, fontSize:13, outline:"none" }}/></div>
+              <div>{lbl("Engineers Name")}{inp(i,"engineerName","Full name")}</div>
+              <div>{lbl("Company Name")}{inp(i,"companyName","Company")}</div>
+              <div>{lbl("Telephone No")}{inp(i,"tel","Phone","tel")}</div>
+              <div>{lbl("Gas Safe Register No")}{inp(i,"gasSafeNo","Gas Safe No")}</div>
+            </div>
+            {lbl("CO/CO₂ Readings")}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:6 }}>
+              <div><div style={{ fontSize:10, color:"#888", marginBottom:2 }}>CO max rate</div>{inp(i,"coMaxRate","ppm")}</div>
+              <div><div style={{ fontSize:10, color:"#888", marginBottom:2 }}>CO₂ max rate</div>{inp(i,"co2MaxRate","%")}</div>
+              <div><div style={{ fontSize:10, color:"#888", marginBottom:2 }}>CO min rate</div>{inp(i,"coMinRate","ppm")}</div>
+              <div><div style={{ fontSize:10, color:"#888", marginBottom:2 }}>CO₂ min rate</div>{inp(i,"co2MinRate","%")}</div>
+            </div>
+            {lbl("Comments")}<textarea value={svc.comments||""} onChange={e=>update(i,"comments",e.target.value)} placeholder="Any comments..."
+              rows={2} style={{ width:"100%", boxSizing:"border-box", padding:"9px 11px", border:"1px solid #ddd", borderRadius:8, fontSize:13, outline:"none", resize:"none", marginBottom:2 }}/>
+          </div>
+        ))}
+      </div>
+      <BottomBar onHome={onHome} onNext={onNext}/>
+    </div>
+  );
+}
+
+// Screen 9: Engineer Signature
+function BmkStepSignature({ data, onChange, onNext, onBack, onHome }) {
+  const canvasRef = useRef(null);
+  const drawing = useRef(false);
+  const [showDataInfo, setShowDataInfo] = useState(false);
+  const today = todayISO();
+  useEffect(() => { if (!data.sigDate) onChange({...data, sigDate:today}); }, []);
+  const getPos = (e,c) => { const r=c.getBoundingClientRect(); const s=e.touches?e.touches[0]:e; return {x:s.clientX-r.left,y:s.clientY-r.top}; };
+  const startDraw = e => { drawing.current=true; const c=canvasRef.current; const ctx=c.getContext("2d"); const p=getPos(e,c); ctx.beginPath(); ctx.moveTo(p.x,p.y); e.preventDefault(); };
+  const draw = e => { if(!drawing.current) return; const c=canvasRef.current; const ctx=c.getContext("2d"); const p=getPos(e,c); ctx.lineWidth=2.5; ctx.lineCap="round"; ctx.strokeStyle="#222"; ctx.lineTo(p.x,p.y); ctx.stroke(); e.preventDefault(); };
+  const endDraw = () => { drawing.current=false; const c=canvasRef.current; onChange({...data,sigEngineerImg:c.toDataURL()}); };
+  const clear = () => { const c=canvasRef.current; c.getContext("2d").clearRect(0,0,c.width,c.height); onChange({...data,sigEngineerImg:""}); };
+  return (
+    <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:LIGHT_BG }}>
+      <Header title="Engineer Signature" onBack={onBack}/>
+      <div style={{ flex:1, overflowY:"auto", display:"flex", flexDirection:"column", padding:16, gap:10 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <input type="checkbox" id="bmkdp" checked={data.dataProtection||false} onChange={e=>onChange({...data,dataProtection:e.target.checked})} style={{width:18,height:18}}/>
+          <label htmlFor="bmkdp" style={{ fontSize:15, fontFamily:"'Segoe UI',sans-serif", color:"#333" }}>Data Protection</label>
+          <button onClick={()=>setShowDataInfo(true)} style={{ marginLeft:"auto", background:"none", border:"none", cursor:"pointer", color:BLUE }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke={BLUE} strokeWidth="2"/><text x="12" y="16" textAnchor="middle" fill={BLUE} fontSize="13" fontWeight="bold">i</text></svg>
+          </button>
+        </div>
+        <div style={{ fontSize:14, color:"#666", fontFamily:"'Segoe UI',sans-serif", marginBottom:4 }}>Engineer printed name</div>
+        <input value={data.sigEngineerName||""} onChange={e=>onChange({...data,sigEngineerName:e.target.value})} placeholder="Full name"
+          style={{ width:"100%", boxSizing:"border-box", padding:"10px 12px", border:"1px solid #ddd", borderRadius:4, background:"#fff", fontSize:14, fontFamily:"'Segoe UI',sans-serif", outline:"none" }}/>
+        <div style={{ fontSize:14, color:"#666", fontFamily:"'Segoe UI',sans-serif" }}>Date</div>
+        <input type="date" value={data.sigDate||today} onChange={e=>onChange({...data,sigDate:e.target.value})}
+          style={{ width:"100%", boxSizing:"border-box", padding:"10px 12px", border:"1px solid #ddd", borderRadius:4, background:"#fff", fontSize:14, fontFamily:"'Segoe UI',sans-serif", outline:"none" }}/>
+        <div style={{ fontSize:14, color:"#666", fontFamily:"'Segoe UI',sans-serif" }}>Signature:</div>
+        <div style={{ flex:1, position:"relative", background:"#fff", border:"1px solid #ddd", borderRadius:4, minHeight:180 }}>
+          <canvas ref={canvasRef} width={340} height={200}
+            style={{ width:"100%", height:"100%", display:"block", touchAction:"none" }}
+            onMouseDown={startDraw} onMouseMove={draw} onMouseUp={endDraw} onMouseLeave={endDraw}
+            onTouchStart={startDraw} onTouchMove={draw} onTouchEnd={endDraw}/>
+        </div>
+        <div style={{ display:"flex", justifyContent:"flex-end" }}>
+          <button onClick={clear} style={{ background:BLUE, color:"#fff", border:"none", borderRadius:6, padding:"10px 28px", fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:"'Segoe UI',sans-serif" }}>CLEAR</button>
+        </div>
+      </div>
+      {showDataInfo && <Modal title="Data Protection" onClose={()=>setShowDataInfo(false)}>
+        <p style={{ fontFamily:"'Segoe UI',sans-serif", fontSize:14, color:"#333", lineHeight:1.5 }}>Your personal data is collected to provide gas safety services. It will be stored securely and not shared with third parties without your consent.</p>
+      </Modal>}
+      <BottomBar onHome={onHome} onNext={onNext} nextLabel="Next: Customer Signature"/>
+    </div>
+  );
+}
+
+// Screen 10: Customer Signature
+function BmkStepCustomerSig({ data, onChange, onNext, onBack, onHome }) {
+  const canvasRef = useRef(null);
+  const drawing = useRef(false);
+  const today = todayISO();
+  useEffect(() => { if (!data.sigCustomerDate) onChange({...data, sigCustomerDate:today}); }, []);
+  const getPos = (e,c) => { const r=c.getBoundingClientRect(); const s=e.touches?e.touches[0]:e; return {x:s.clientX-r.left,y:s.clientY-r.top}; };
+  const startDraw = e => { drawing.current=true; const c=canvasRef.current; const ctx=c.getContext("2d"); const p=getPos(e,c); ctx.beginPath(); ctx.moveTo(p.x,p.y); e.preventDefault(); };
+  const draw = e => { if(!drawing.current) return; const c=canvasRef.current; const ctx=c.getContext("2d"); const p=getPos(e,c); ctx.lineWidth=2.5; ctx.lineCap="round"; ctx.strokeStyle="#222"; ctx.lineTo(p.x,p.y); ctx.stroke(); e.preventDefault(); };
+  const endDraw = () => { drawing.current=false; const c=canvasRef.current; onChange({...data,sigCustomerImg:c.toDataURL()}); };
+  const clear = () => { const c=canvasRef.current; c.getContext("2d").clearRect(0,0,c.width,c.height); onChange({...data,sigCustomerImg:""}); };
+  return (
+    <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:LIGHT_BG }}>
+      <Header title="Customer Signature" onBack={onBack}/>
+      <div style={{ flex:1, overflowY:"auto", display:"flex", flexDirection:"column", padding:16, gap:10 }}>
+        <div style={{ fontSize:14, color:"#666", fontFamily:"'Segoe UI',sans-serif", marginBottom:4 }}>Customer printed name</div>
+        <input value={data.sigCustomerName||""} onChange={e=>onChange({...data,sigCustomerName:e.target.value})} placeholder="Full name"
+          style={{ width:"100%", boxSizing:"border-box", padding:"10px 12px", border:"1px solid #ddd", borderRadius:4, background:"#fff", fontSize:14, fontFamily:"'Segoe UI',sans-serif", outline:"none" }}/>
+        <div style={{ fontSize:14, color:"#666", fontFamily:"'Segoe UI',sans-serif" }}>Date</div>
+        <input type="date" value={data.sigCustomerDate||today} onChange={e=>onChange({...data,sigCustomerDate:e.target.value})}
+          style={{ width:"100%", boxSizing:"border-box", padding:"10px 12px", border:"1px solid #ddd", borderRadius:4, background:"#fff", fontSize:14, fontFamily:"'Segoe UI',sans-serif", outline:"none" }}/>
+        <div style={{ fontSize:14, color:"#666", fontFamily:"'Segoe UI',sans-serif" }}>Signature:</div>
+        <div style={{ flex:1, position:"relative", background:"#fff", border:"1px solid #ddd", borderRadius:4, minHeight:180 }}>
+          <canvas ref={canvasRef} width={340} height={200}
+            style={{ width:"100%", height:"100%", display:"block", touchAction:"none" }}
+            onMouseDown={startDraw} onMouseMove={draw} onMouseUp={endDraw} onMouseLeave={endDraw}
+            onTouchStart={startDraw} onTouchMove={draw} onTouchEnd={endDraw}/>
+        </div>
+        <div style={{ display:"flex", justifyContent:"flex-end" }}>
+          <button onClick={clear} style={{ background:BLUE, color:"#fff", border:"none", borderRadius:6, padding:"10px 28px", fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:"'Segoe UI',sans-serif" }}>CLEAR</button>
+        </div>
+      </div>
+      <BottomBar onHome={onHome} onNext={onNext}/>
+    </div>
+  );
+}
+
+// Screen 11: Company / Engineer Details
+function BmkStepCompanyDetails({ data, onChange, onOptions, onBack, onHome }) {
+  const fmtDate = () => { const d=new Date(); const days=["SUN","MON","TUE","WED","THU","FRI","SAT"]; const months=["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"]; return `${days[d.getDay()]}-${String(d.getDate()).padStart(2,"0")}-${months[d.getMonth()]}-${d.getFullYear()}`; };
+  const fmtTime = () => { const d=new Date(); let h=d.getHours(); const m=String(d.getMinutes()).padStart(2,"0"); const ampm=h>=12?"PM":"AM"; h=h%12||12; return `${String(h).padStart(2,"0")}:${m} ${ampm}`; };
+  if (!data.timeArrival) { const t=fmtTime(); onChange({...data, timeArrival:t, timeDeparture:t, reportDate:fmtDate()}); }
+  return (
+    <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:LIGHT_BG }}>
+      <Header title="Engineer Details" onBack={onBack}/>
+      <div style={{ flex:1, overflowY:"auto" }}>
+        <div style={{ fontSize:13, color:"#999", padding:"10px 16px 4px", fontFamily:"'Segoe UI',sans-serif" }}>Company Details</div>
+        <FormInput label="" placeholder="Company Name" value={data.companyName||""} onChange={v=>onChange({...data,companyName:v})}/>
+        <div style={{ fontSize:13, color:"#999", padding:"8px 16px 2px", fontFamily:"'Segoe UI',sans-serif" }}>Address</div>
+        <textarea value={data.companyAddr||""} onChange={e=>onChange({...data,companyAddr:e.target.value})}
+          style={{ width:"100%", boxSizing:"border-box", padding:"12px 16px", border:"none", borderBottom:"1px solid #e8eaf0", background:"#fff", fontSize:15, fontFamily:"'Segoe UI',sans-serif", resize:"none", height:80, outline:"none" }}/>
+        <FormInput label="" placeholder="Postcode" value={data.companyPostcode||""} onChange={v=>onChange({...data,companyPostcode:v})}/>
+        <FormInput label="" placeholder="Telephone" value={data.companyTel||""} onChange={v=>onChange({...data,companyTel:v})}/>
+        <FormInput label="" placeholder="Gas Safe No" value={data.gasSafeNo||""} onChange={v=>onChange({...data,gasSafeNo:v})}/>
+        <div style={{ fontSize:13, color:"#999", padding:"8px 16px 2px", fontFamily:"'Segoe UI',sans-serif" }}>Time of Arrival</div>
+        <input value={data.timeArrival||""} onChange={e=>onChange({...data,timeArrival:e.target.value})}
+          style={{ width:"100%", boxSizing:"border-box", padding:"12px 16px", border:"none", borderBottom:"1px solid #e8eaf0", background:"#fff", fontSize:15, fontFamily:"'Segoe UI',sans-serif", fontWeight:700, outline:"none" }}/>
+        <div style={{ fontSize:13, color:"#999", padding:"8px 16px 2px", fontFamily:"'Segoe UI',sans-serif" }}>Time of Departure</div>
+        <input value={data.timeDeparture||""} onChange={e=>onChange({...data,timeDeparture:e.target.value})}
+          style={{ width:"100%", boxSizing:"border-box", padding:"12px 16px", border:"none", borderBottom:"1px solid #e8eaf0", background:"#fff", fontSize:15, fontFamily:"'Segoe UI',sans-serif", fontWeight:700, outline:"none" }}/>
+        <div style={{ fontSize:13, color:"#999", padding:"10px 16px 4px", fontFamily:"'Segoe UI',sans-serif" }}>Report Issued By</div>
+        <FormInput label="" placeholder="Name" value={data.engineerName||""} onChange={v=>onChange({...data,engineerName:v})}/>
+        <FormInput label="" placeholder="Gas ID No" value={data.gasId||""} onChange={v=>onChange({...data,gasId:v})}/>
+        <div style={{ padding:"12px 16px", border:"none", borderBottom:"1px solid #e8eaf0", background:"#fff", fontSize:15, fontFamily:"'Segoe UI',sans-serif", fontWeight:700 }}>
+          {data.reportDate || fmtDate()}
+        </div>
+        <div style={{height:16}}/>
+      </div>
+      <BottomBar onHome={onHome} onOptions={onOptions}/>
+    </div>
+  );
+}
+
+// ─── BENCHMARK PDF ───────────────────────────────────────────────────────────
+
+function BenchmarkPDF({ bmkData, engineerData, onClose, autoDownload, onDownloadDone }) {
+  const certRef = useRef(null);
+  const serviceRef = useRef(null);
+  const [downloading, setDownloading] = useState(false);
+  const autoDownloadDoneRef = useRef(null);
+
+  const fd = bmkData || {};
+  const eng = engineerData || {};
+  const today = todayISO();
+  const effSigDate = fd.sigDate || today;
+  const effCustDate = fd.sigCustomerDate || today;
+
+  const fmtDate = iso => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (isNaN(d)) return iso;
+    const days = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    return days[d.getDay()]+"-"+String(d.getDate()).padStart(2,"0")+"-"+months[d.getMonth()]+"-"+d.getFullYear();
+  };
+
+  const downloadPDF = async () => {
+    setDownloading(true);
+    try {
+      await Promise.all([
+        new Promise((res,rej)=>{ if(window.html2canvas) return res(); const s=document.createElement("script"); s.src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"; s.onload=res; s.onerror=rej; document.head.appendChild(s); }),
+        new Promise((res,rej)=>{ if(window.jspdf) return res(); const s=document.createElement("script"); s.src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"; s.onload=res; s.onerror=rej; document.head.appendChild(s); }),
+      ]);
+      const W = 900;
+      const el = certRef.current;
+      const prev = {w:el.style.width,max:el.style.maxWidth};
+      el.style.width=W+"px"; el.style.maxWidth=W+"px";
+      await new Promise(r=>setTimeout(r,300));
+      const canvas1 = await window.html2canvas(el, { scale:2, useCORS:true, logging:false, width:W, height:el.scrollHeight, windowWidth:W });
+      el.style.width=prev.w; el.style.maxWidth=prev.max;
+      const el2 = serviceRef.current;
+      const prev2 = {w:el2.style.width,max:el2.style.maxWidth};
+      el2.style.width=W+"px"; el2.style.maxWidth=W+"px";
+      await new Promise(r=>setTimeout(r,200));
+      const canvas2 = await window.html2canvas(el2, { scale:2, useCORS:true, logging:false, width:W, height:el2.scrollHeight, windowWidth:W });
+      el2.style.width=prev2.w; el2.style.maxWidth=prev2.max;
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({ orientation:"portrait", unit:"mm", format:"a4" });
+      const pdfW=210;
+      pdf.addImage(canvas1.toDataURL("image/jpeg",0.95),"JPEG",0,0,pdfW,pdfW*canvas1.height/canvas1.width);
+      pdf.addPage();
+      pdf.addImage(canvas2.toDataURL("image/jpeg",0.95),"JPEG",0,0,pdfW,pdfW*canvas2.height/canvas2.width);
+      const ref = (fd.certNo||"BMK").replace(/[^a-zA-Z0-9]/g,"_");
+      pdf.save("BenchmarkChecklist_"+ref+".pdf");
+      if (autoDownload && onDownloadDone) onDownloadDone();
+    } catch(e) { alert("PDF error: "+e.message); }
+    setDownloading(false);
+  };
+
+  useEffect(() => {
+    if (autoDownload && !autoDownloadDoneRef.current) {
+      autoDownloadDoneRef.current = true;
+      setTimeout(() => { downloadPDF(); }, 600);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const b = "1px solid #aaa";
+  const S = { borderCollapse:"collapse", width:"100%" };
+  const cell = (w, extra) => Object.assign({ border:b, padding:"3px 5px", fontSize:"8px", verticalAlign:"middle" }, w?{width:w}:{}, extra||{});
+  const hdrCell = (w, extra) => Object.assign(cell(w), { background:"#2d3748", color:"#fff", fontWeight:700, padding:"4px 6px", fontSize:"8px" }, extra||{});
+  const tickBox = v => <span style={{ border:"1px solid #888", display:"inline-block", width:10, height:10, textAlign:"center", lineHeight:"10px", fontSize:8 }}>{v==="Yes"?"✓":""}</span>;
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:LIGHT_BG, zIndex:2000, overflowY:"auto", fontFamily:"Arial,sans-serif" }}>
+      <div style={{ background:`linear-gradient(135deg,${DARK_BLUE},${BLUE})`, padding:"10px 16px", display:"flex", alignItems:"center", gap:12, position:"sticky", top:0, zIndex:10 }}>
+        <button onClick={onClose} style={{ background:"rgba(255,255,255,0.2)", border:"none", borderRadius:"50%", width:36, height:36, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M11 3L5 9L11 15" stroke="white" strokeWidth="2.2" strokeLinecap="round"/></svg>
+        </button>
+        <span style={{ color:"#fff", fontWeight:700, fontSize:15, flex:1 }}>Benchmark Checklist — Preview</span>
+        <button onClick={downloadPDF} disabled={downloading}
+          style={{ background:"#fff", border:"none", borderRadius:8, padding:"6px 14px", color:DARK_BLUE, fontWeight:700, fontSize:13, cursor:"pointer", opacity:downloading?0.7:1 }}>
+          {downloading?"Generating...":"PDF"}
+        </button>
+      </div>
+
+      <div style={{ padding:"12px", display:"flex", justifyContent:"center" }}>
+        <div ref={certRef} style={{ width:"100%", maxWidth:900, background:"#fff", fontFamily:"Arial,sans-serif", fontSize:"8px", padding:"16px 20px", boxShadow:"0 4px 20px rgba(0,0,0,0.15)" }}>
+
+          <div style={{ fontWeight:900, fontSize:"18px", marginBottom:6 }}>GAS BOILER SYSTEM COMMISSIONING CHECKLIST</div>
+          <div style={{ fontSize:"8px", fontWeight:700, marginBottom:3 }}>This Commissioning Checklist is to be completed in full by the competent person who commissioned the boiler as a means of demonstrating compliance with the appropriate Building Regulations and then handed to the customer to keep for future reference.</div>
+          <div style={{ fontSize:"7.5px", marginBottom:10 }}>Failure to install and commission according to the manufacturers instructions and complete this Benchmark commissioning checklist will invalidate the warranty. This does not affect customer statutory rights.</div>
+
+          <table style={S}>
+            <tbody>
+              <tr>
+                <td style={cell("45%")}>Customer Name: <strong>{fd.clientName||""}</strong></td>
+                <td style={cell()}>Telephone No.: <strong>{fd.clientTel||""}</strong></td>
+              </tr>
+              <tr><td style={cell()} colSpan={2}>Address: <strong>{[fd.clientAddr1,fd.clientAddr2,fd.clientAddr3].filter(Boolean).join(", ")}</strong></td></tr>
+              <tr><td style={cell()} colSpan={2}>Boiler make and model: <strong>{[fd.boilerMake,fd.boilerModel].filter(Boolean).join(", ")}</strong></td></tr>
+              <tr>
+                <td style={cell("45%")}>Boiler Serial Number: <strong>{fd.boilerSerial||""}</strong></td>
+                <td style={cell()}></td>
+              </tr>
+              <tr><td style={cell()} colSpan={2}>Gas safe register No.: <strong>{eng.gasSafeNo||""}</strong></td></tr>
+              <tr>
+                <td style={cell("45%")}>Company Name: <strong>{eng.companyName||""}</strong></td>
+                <td style={cell()}>Telephone No.: <strong>{eng.companyTel||""}</strong></td>
+              </tr>
+              <tr><td style={cell()} colSpan={2}>Company Address: <strong>{eng.companyAddr||""}</strong></td></tr>
+              <tr>
+                <td style={{ ...cell(), textAlign:"right" }} colSpan={2}>Commissioning date: <strong>{fmtDate(effSigDate)}</strong></td>
+              </tr>
+              <tr><td style={{ ...cell(), fontStyle:"italic", fontSize:"7px" }} colSpan={2}>To be completed by the customer on the receipt of a Building Regulation Compliances Certificate*</td></tr>
+              <tr><td style={cell()} colSpan={2}>Building Regulations Notification Number (If applicable): <strong>{fd.notificationNo||""}</strong></td></tr>
+            </tbody>
+          </table>
+
+          <table style={{ ...S, marginTop:4 }}>
+            <tbody>
+              <tr><td style={hdrCell()} colSpan={4}>CONTROLS (tick the appropriate boxes)</td></tr>
+              <tr>
+                <td style={cell("35%")}>Time and temperature control to heating</td>
+                <td style={cell("30%")}>Room Thermostat and Programmer/Timer {tickBox(fd.ctrlRoomStat)}</td>
+                <td style={cell("20%")}>Programmable room thermostat</td>
+                <td style={cell("15%")}>{tickBox(fd.ctrlProgRoom)}</td>
+              </tr>
+              <tr>
+                <td style={cell()}></td>
+                <td style={cell()}>Load/Weather compensation {tickBox(fd.ctrlLoadWeather)}</td>
+                <td style={cell()}>Optimum start control</td>
+                <td style={cell()}>{tickBox(fd.ctrlOptStart)}</td>
+              </tr>
+              <tr>
+                <td style={cell()}>Time and temperature control to hot water</td>
+                <td style={cell()}>Cylinder Thermostat and Programmer/Timer {tickBox(fd.ctrlCylStat)}</td>
+                <td style={cell()}>Combination boiler</td>
+                <td style={cell()}>{tickBox(fd.ctrlCombi)}</td>
+              </tr>
+              {[
+                ["Heating zone valves","ctrlHeatZone"],
+                ["Hot water zone valves","ctrlHotZone"],
+                ["Thermostatic radiator valves","ctrlTRV"],
+                ["Automatic bypass to system","ctrlBypass"],
+              ].map(([label,key])=>(
+                <tr key={key}>
+                  <td style={cell()}>{label}</td>
+                  <td style={cell()}>Fitted {tickBox(fd[key]==="Fitted"?"Yes":"")}</td>
+                  <td style={cell()}>Not Required</td>
+                  <td style={cell()}>{tickBox(fd[key]==="Not Fitted"?"Yes":"")}</td>
+                </tr>
+              ))}
+              <tr>
+                <td style={cell()}>Boiler interlock</td>
+                <td style={cell()} colSpan={3}>Provided {tickBox(fd.ctrlInterlock)}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <table style={{ ...S, marginTop:4 }}>
+            <tbody>
+              <tr><td style={hdrCell()} colSpan={4}>ALL SYSTEMS</td></tr>
+              <tr>
+                <td style={cell("70%")} colSpan={3}>The system has been flushed and cleaned in accordance with BS7593 and the boiler manufacturer's instructions</td>
+                <td style={cell("30%")}>Yes {tickBox(fd.sysFlush)}</td>
+              </tr>
+              <tr><td style={cell()} colSpan={2}>What system cleaner was used?</td><td style={cell()} colSpan={2}><strong>{fd.sysCleaner||""}</strong></td></tr>
+              <tr>
+                <td style={cell()}>What inhibitor was used?</td>
+                <td style={cell()}><strong>{fd.sysInhibitor||""}</strong></td>
+                <td style={cell()}>Quantity litres</td>
+                <td style={cell()}><strong>{fd.sysLitres||""}</strong></td>
+              </tr>
+              <tr>
+                <td style={cell()} colSpan={2}>Has a primary water filter been installed?</td>
+                <td style={cell()}>Yes {tickBox(fd.sysPrimaryFilter)}</td>
+                <td style={cell()}>No {tickBox(fd.sysPrimaryFilter==="No"?"Yes":"")}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <table style={{ ...S, marginTop:4 }}>
+            <tbody>
+              <tr><td style={hdrCell()} colSpan={6}>CENTRAL HEATING MODE measure and record</td></tr>
+              <tr>
+                <td style={cell("25%")}>Gas Rate</td>
+                <td style={cell("20%")}><strong>{fd.chGasRateFt||""}</strong></td>
+                <td style={cell("5%")}>m³/hr</td>
+                <td style={cell("10%")}>OR</td>
+                <td style={cell("20%")}><strong>{fd.chGasRateM3||""}</strong></td>
+                <td style={cell("20%")}>ft³/hr</td>
+              </tr>
+              <tr>
+                <td style={cell()}>Burner Operating / Gas Inlet Pressure</td>
+                <td style={cell()} colSpan={4}><strong>{fd.chPressure||""}</strong></td>
+                <td style={cell()}>mbar</td>
+              </tr>
+              <tr>
+                <td style={cell()}>Central Heating Flow Temperature</td>
+                <td style={cell()} colSpan={4}><strong>{fd.chFlowTemp||""}</strong></td>
+                <td style={cell()}>°C</td>
+              </tr>
+              <tr>
+                <td style={cell()}>Central Heating Return Temperature</td>
+                <td style={cell()} colSpan={4}><strong>{fd.chReturnTemp||""}</strong></td>
+                <td style={cell()}>°C</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <table style={{ ...S, marginTop:4 }}>
+            <tbody>
+              <tr><td style={hdrCell()} colSpan={4}>COMBINATION BOILERS ONLY</td></tr>
+              <tr>
+                <td style={cell("60%")} colSpan={2}>Is the installation in a hard water area (above 200ppm)?</td>
+                <td style={cell()}>Yes {tickBox(fd.sysHardWater)}</td>
+                <td style={cell()}>No {tickBox(fd.sysHardWater==="No"?"Yes":"")}</td>
+              </tr>
+              <tr>
+                <td style={cell("60%")} colSpan={2}>If yes, and if required by the manufacturer, has a water scale reducer been fitted?</td>
+                <td style={cell()}>Yes {tickBox(fd.sysScaleReducer)}</td>
+                <td style={cell()}>No {tickBox(fd.sysScaleReducer==="No"?"Yes":"")}</td>
+              </tr>
+              <tr><td style={cell()} colSpan={2}>What type of scale reducer has been fitted?</td><td style={cell()} colSpan={2}><strong>{fd.sysScaleType||""}</strong></td></tr>
+            </tbody>
+          </table>
+
+          <table style={{ ...S, marginTop:4 }}>
+            <tbody>
+              <tr><td style={hdrCell()} colSpan={6}>DOMESTIC HOT WATER MODE measure and record</td></tr>
+              <tr>
+                <td style={cell("25%")}>Gas Rate</td>
+                <td style={cell("20%")}><strong>{fd.hwGasRateFt||""}</strong></td>
+                <td style={cell("5%")}>m³/hr</td>
+                <td style={cell("10%")}>OR</td>
+                <td style={cell("20%")}><strong>{fd.hwGasRateM3||""}</strong></td>
+                <td style={cell("20%")}>ft³/hr</td>
+              </tr>
+              <tr>
+                <td style={cell()}>Burner Operating / Gas Inlet Pressure (at max rate)</td>
+                <td style={cell()} colSpan={4}><strong>{fd.hwPressure||""}</strong></td>
+                <td style={cell()}>mbar</td>
+              </tr>
+              <tr>
+                <td style={cell()}>Cold water inlet temperature</td>
+                <td style={cell()} colSpan={4}><strong>{fd.hwColdInlet||""}</strong></td>
+                <td style={cell()}>°C</td>
+              </tr>
+              <tr>
+                <td style={cell()}>Hot water has been checked at all outlets</td>
+                <td style={cell()}>Yes {tickBox(fd.hwCheckedAll)}</td>
+                <td style={cell()}>Temperature</td>
+                <td style={cell()}><strong>{fd.hwOutletTemp||""}</strong></td>
+                <td style={cell()}>°C</td>
+                <td style={cell()}></td>
+              </tr>
+              <tr>
+                <td style={cell()}>Water flow Rate</td>
+                <td style={cell()} colSpan={4}><strong>{fd.hwFlowRate||""}</strong></td>
+                <td style={cell()}>l/min</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <table style={{ ...S, marginTop:4 }}>
+            <tbody>
+              <tr><td style={hdrCell()} colSpan={3}>CONDENSING BOILERS ONLY</td></tr>
+              <tr>
+                <td style={cell("80%")} colSpan={2}>The condensate drain has been installed in accordance with manufacturers instructions and/or BS5546/BS6798</td>
+                <td style={cell()}>Yes {tickBox(fd.condensateDrain)}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <table style={{ ...S, marginTop:4 }}>
+            <tbody>
+              <tr><td style={hdrCell()} colSpan={4}>ALL INSTALLATIONS</td></tr>
+              <tr>
+                <td style={cell("20%")} rowSpan={2}>Record The Following</td>
+                <td style={cell("20%")}>At max. rate: CO</td>
+                <td style={cell("40%")}><strong>{fd.coMax||""}</strong> ppm AND CO₂ <strong>{fd.co2Max||""}</strong></td>
+                <td style={cell("20%")}>Ratio {fd.ratioMax||""}</td>
+              </tr>
+              <tr>
+                <td style={cell()}>At min. rate (where possible): CO</td>
+                <td style={cell()}><strong>{fd.coMin||""}</strong> ppm AND CO₂ <strong>{fd.co2Min||""}</strong></td>
+                <td style={cell()}>Ratio {fd.ratioMin||""}</td>
+              </tr>
+              {[
+                ["The heating and hot water system complies with the appropriate Building Regulations","finalBuildingRegs"],
+                ["The boiler and associated product have been installed and commissioned in accordance with the manufacturer's instructions","finalCommissioned"],
+                ["The operation of boiler and system controls have been demonstrated to and understood by the customer","finalDemonstrated"],
+                ["The manufacturer's literature, including Benchmark checklist and service record, has been explained and left with the customer","finalLiterature"],
+              ].map(([label,key])=>(
+                <tr key={key}>
+                  <td style={cell()} colSpan={3}>{label}</td>
+                  <td style={cell()}>Yes {tickBox(fd[key])}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <table style={{ ...S, marginTop:4 }}>
+            <tbody>
+              <tr>
+                <td style={cell("50%")} colSpan={2}>
+                  <div style={{ fontSize:"7.5px", fontStyle:"italic", marginBottom:4 }}>To confirm satisfactory demonstration and receipt of manufacturer's literature</div>
+                  <div style={{ fontWeight:700, fontSize:"8px", marginBottom:3 }}>Commissioning engineer's signature</div>
+                  {fd.sigEngineerImg
+                    ? <img src={fd.sigEngineerImg} style={{ height:32, maxWidth:140, marginBottom:2 }} alt="eng sig"/>
+                    : <div style={{ borderBottom:"1px solid #999", height:28, marginBottom:4 }}/>
+                  }
+                  <div style={{ fontSize:"7px", color:"#444" }}>{fd.sigEngineerName||eng.engineerName||""}</div>
+                  <div style={{ fontSize:"7px", color:"#555" }}>{fmtDate(effSigDate)}</div>
+                </td>
+                <td style={cell("50%")} colSpan={2}>
+                  <div style={{ fontWeight:700, fontSize:"8px", marginBottom:3 }}>Customer's signature</div>
+                  {fd.sigCustomerImg
+                    ? <img src={fd.sigCustomerImg} style={{ height:32, maxWidth:140, marginBottom:2 }} alt="cust sig"/>
+                    : <div style={{ borderBottom:"1px solid #999", height:28, marginBottom:4 }}/>
+                  }
+                  <div style={{ fontSize:"7px", color:"#444" }}>{fd.sigCustomerName||""}</div>
+                  <div style={{ fontSize:"7px", color:"#555" }}>{fmtDate(effCustDate)}</div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div style={{ fontSize:"7px", color:"#555", marginTop:8, borderTop:b, paddingTop:6 }}>
+            * All installations in England and Wales must be notified to Local Authority Building Control (LABC) either directly or through a Competent Persons Scheme. A Building Regulation Compliance Certificate will then be issued to the customer.
+          </div>
+          <div style={{ textAlign:"center", fontSize:"6.5px", color:"#777", marginTop:4 }}>
+            {(eng.companyName||"")}{eng.gasSafeNo?" | Gas Safe: "+eng.gasSafeNo:""}{eng.companyTel?" | Tel: "+eng.companyTel:""}
+          </div>
+
+        </div>
+      </div>
+
+      <div style={{ position:"absolute", left:"-9999px", top:0, width:"900px", overflow:"hidden" }}>
+        <div ref={serviceRef} style={{ width:"100%", background:"#fff", fontFamily:"Arial,sans-serif", fontSize:"7.5px", padding:"14px 18px", lineHeight:1.3 }}>
+
+          <div style={{ fontWeight:900, fontSize:"16px", marginBottom:4 }}>SERVICE RECORD</div>
+          <div style={{ fontSize:"7.5px", marginBottom:3 }}>It is recommended that your heating system is serviced regularly and that the appropriate Service Interval Record is completed</div>
+          <div style={{ fontWeight:700, fontSize:"8.5px", marginBottom:3 }}>Service Provider.</div>
+          <div style={{ fontSize:"7.5px", marginBottom:10 }}>Before completing the appropriate service interval record below, please ensure you have carried out the service as described in the manufacturer's instructions. Always use the manufacturer's specified spare parts when replacing any controls.</div>
+
+          {(() => {
+            const svcs = (fd.services||[]).concat(Array(10).fill(null).map(()=>({}))).slice(0,10);
+            const cell2 = (w, extra) => Object.assign({ border:b, padding:"2px 4px", fontSize:"7px", verticalAlign:"top" }, w?{width:w}:{}, extra||{});
+            const pairs = [[0,1],[2,3],[4,5],[6,7],[8,9]];
+
+            const ServiceBlock = (svc, num) => (
+              <td key={num} style={{ width:"50%", verticalAlign:"top", padding:"0 0 0 "+(num%2===1?"6px":"0") }}>
+                <table style={{ borderCollapse:"collapse", width:"100%" }}>
+                  <tbody>
+                    <tr>
+                      <td style={{ ...cell2("70%"), fontWeight:700, fontSize:"7.5px", background:"#f0f0f0" }}>Service {num+1}</td>
+                      <td style={{ ...cell2("30%"), fontSize:"7px" }}>Date: <strong>{svc.date||""}</strong></td>
+                    </tr>
+                    <tr><td style={cell2()}>Engineers Name</td><td style={cell2()}><strong>{svc.engineerName||""}</strong></td></tr>
+                    <tr><td style={cell2()}>Company Name</td><td style={cell2()}><strong>{svc.companyName||""}</strong></td></tr>
+                    <tr><td style={cell2()}>Telephone No</td><td style={cell2()}><strong>{svc.tel||""}</strong></td></tr>
+                    <tr><td style={cell2()}>Gas safe register No.</td><td style={cell2()}><strong>{svc.gasSafeNo||""}</strong></td></tr>
+                    <tr>
+                      <td style={cell2()} colSpan={2}>
+                        <span style={{ fontSize:"6.5px" }}>Record: &nbsp; At max. rate: CO </span>
+                        <strong style={{ fontSize:"7px" }}>{svc.coMaxRate||""}</strong>
+                        <span style={{ fontSize:"6.5px" }}> ppm AND CO₂% </span>
+                        <strong style={{ fontSize:"7px" }}>{svc.co2MaxRate||""}</strong>
+                        <br/>
+                        <span style={{ fontSize:"6px" }}>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;At min rate (where possible) CO </span>
+                        <strong style={{ fontSize:"7px" }}>{svc.coMinRate||""}</strong>
+                        <span style={{ fontSize:"6.5px" }}> ppm AND CO₂% </span>
+                        <strong style={{ fontSize:"7px" }}>{svc.co2MinRate||""}</strong>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style={cell2()} colSpan={2}>
+                        <span style={{ fontSize:"6.5px" }}>Comments:</span><br/>
+                        <span style={{ fontSize:"7px" }}>{svc.comments||""}</span>
+                        <br/><br/>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style={cell2()} colSpan={2}>
+                        <span style={{ fontSize:"6.5px" }}>Signature</span>
+                        <div style={{ borderBottom:"1px dotted #aaa", minHeight:18, marginTop:2 }}></div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </td>
+            );
+
+            return (
+              <table style={{ borderCollapse:"separate", borderSpacing:"0 8px", width:"100%" }}>
+                <tbody>
+                  {pairs.map(([ai,bi]) => (
+                    <tr key={ai} style={{ verticalAlign:"top" }}>
+                      {ServiceBlock(svcs[ai]||{}, ai)}
+                      {ServiceBlock(svcs[bi]||{}, bi)}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            );
+          })()}
+
+          <div style={{ fontSize:"7px", color:"#555", marginTop:10, borderTop:"1px solid #aaa", paddingTop:6 }}>
+            * All installations in England and Wales must be notified to Local Authority Building Control (LABC) either directly or through a Competent Persons Scheme. A Building Regulation Compliance Certificate will then be issued to the customer.
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  );
+}
+
+
 function App() {
   const [screen, setScreen] = useState("login");
   const [subScreen, setSubScreen] = useState(null);
@@ -8191,6 +9209,7 @@ function App() {
   const [quoteToInvoiceDraft, setQuoteToInvoiceDraft] = useState(null);
   const [editingBsIndex, setEditingBsIndex] = useState(null);
   const [editingGwIndex, setEditingGwIndex] = useState(null);
+  const [editingBmkIndex, setEditingBmkIndex] = useState(null);
 
   // Persist records to localStorage whenever they change
   useEffect(() => {
@@ -8292,6 +9311,13 @@ function App() {
   const [bsSigData, setBsSigData] = useState({});
   const [bsEngData, setBsEngData] = useState({ companyName:"West Lothian Gas Ltd", companyAddr:"18 Mauldeth Rd Broxburn", companyPostcode:"EH52 6FB", companyTel:"07961768920", gasSafeNo:"927997", engineerName:"Andrew King-Page", gasId:"5927846" });
 
+  // Benchmark Commissioning state
+  const [bmkStep, setBmkStep] = useState(null);
+  const [bmkShowOptions, setBmkShowOptions] = useState(false);
+  const [bmkShowPDF, setBmkShowPDF] = useState(false);
+  const [bmkData, setBmkData] = useState(defaultBmkData());
+  const [bmkEngData, setBmkEngData] = useState({ companyName:"West Lothian Gas Ltd", companyAddr:"18 Mauldeth Rd Broxburn", companyPostcode:"EH52 6FB", companyTel:"07961768920", gasSafeNo:"927997", engineerName:"Andrew King-Page", gasId:"5927846" });
+
   // Gas Works state
   const [gwSubScreen, setGwSubScreen] = useState(null);
   const [gwData, setGwData] = useState(defaultGwData());
@@ -8337,6 +9363,7 @@ function App() {
     onEditGw={(rec)=>{ setGwData(rec.gwData); setEditingGwIndex(rec._origIdx); setScreen("gasWorks"); setGwSubScreen("form"); }}
     onEditGi={(rec)=>{ setGiData(rec.giData); setScreen("gasIsolation"); setGiSubScreen("form"); }}
     onEditBs={(rec)=>{ setServiceData(rec.serviceData); setBsSigData(rec.bsSigData||{}); setBsEngData(rec.bsEngData||{}); setEditingBsIndex(rec._origIdx); setScreen("bs"); setBsSubScreen("fileRef"); }}
+    onEditBmk={(rec)=>{ setBmkData(rec.bmkData); setBmkEngData(rec.bmkEngData||{}); setEditingBmkIndex(rec._origIdx); setScreen("benchmark"); setBmkStep("fileRef"); }}
     invoices={invoices}
     onCreateInvoice={(invData)=>{ setInvoices(prev=>[...prev, invData]); alert("✅ Invoice saved to Invoices folder!"); }}
     onDeleteInvoice={(i)=>setInvoices(prev=>prev.filter((_,idx)=>idx!==i))}
@@ -8434,7 +9461,7 @@ function App() {
     }
   }}/>;
   if (screen === "newJob") return <NewJobScreen onBack={()=>setScreen("home")} onHome={goHome}
-    onSelect={job => { if(job==="Gas Safety Certificate") { setCertData(defaultCertData()); setAppliances([]); setFaults([]); setFinalChecks({}); setSignatureData({}); setScreen("gsc"); setSubScreen("fileRef"); } else if(job==="Boiler Service") { setServiceData(defaultServiceData()); setBsSigData({}); setEditingBsIndex(null); setScreen("bs"); setBsSubScreen("fileRef"); } else if(job==="Gas Works") { setGwData(defaultGwData()); setEditingGwIndex(null); setScreen("gasWorks"); setGwSubScreen("fileRef"); } else if(job==="Gas Isolation") { setGiData(defaultGiData()); setScreen("gasIsolation"); setGiSubScreen("form"); } else if(job==="Invoice") { setInvoiceWizardOpen(true); } else if(job==="Quote") { setQuoteWizardOpen(true); } else if(job==="Warning Notice") { setScreen("warningNotice"); setWnSubScreen("fileRef"); } else alert(`${job} coming soon`); }}/>
+    onSelect={job => { if(job==="Gas Safety Certificate") { setCertData(defaultCertData()); setAppliances([]); setFaults([]); setFinalChecks({}); setSignatureData({}); setScreen("gsc"); setSubScreen("fileRef"); } else if(job==="Boiler Service") { setServiceData(defaultServiceData()); setBsSigData({}); setEditingBsIndex(null); setScreen("bs"); setBsSubScreen("fileRef"); } else if(job==="Gas Works") { setGwData(defaultGwData()); setEditingGwIndex(null); setScreen("gasWorks"); setGwSubScreen("fileRef"); } else if(job==="Gas Isolation") { setGiData(defaultGiData()); setScreen("gasIsolation"); setGiSubScreen("form"); } else if(job==="Benchmark Commissioning") { setBmkData(defaultBmkData()); setEditingBmkIndex(null); setScreen("benchmark"); setBmkStep("fileRef"); } else if(job==="Invoice") { setInvoiceWizardOpen(true); } else if(job==="Quote") { setQuoteWizardOpen(true); } else if(job==="Warning Notice") { setScreen("warningNotice"); setWnSubScreen("fileRef"); } else alert(`${job} coming soon`); }}/>
 
   if (screen === "gasWorks") {
     if (gwSubScreen === "fileRef") return (
@@ -8555,6 +9582,42 @@ function App() {
             }
           }}
           onClose={()=>setBsShowOptions(false)}/>}
+      </>
+    );
+  }
+
+  if (screen === "benchmark") {
+    if (bmkShowPDF) return <BenchmarkPDF bmkData={bmkData} engineerData={bmkEngData} onClose={()=>setBmkShowPDF(false)}/>;
+    if (bmkStep === "fileRef") return <BmkStepFileRef data={bmkData} onChange={setBmkData} onBack={()=>setScreen("newJob")} onHome={goHome} onNext={()=>setBmkStep("clientDetails")}/>;
+    if (bmkStep === "clientDetails") return <BmkStepClientDetails data={bmkData} onChange={setBmkData} onBack={()=>setBmkStep("fileRef")} onHome={goHome} onNext={()=>setBmkStep("appliance")}/>;
+    if (bmkStep === "appliance") return <BmkStepAppliance data={bmkData} onChange={setBmkData} onBack={()=>setBmkStep("clientDetails")} onHome={goHome} onNext={()=>setBmkStep("controls")}/>;
+    if (bmkStep === "controls") return <BmkStepControls data={bmkData} onChange={setBmkData} onBack={()=>setBmkStep("appliance")} onHome={goHome} onNext={()=>setBmkStep("allSystems")}/>;
+    if (bmkStep === "allSystems") return <BmkStepAllSystems data={bmkData} onChange={setBmkData} onBack={()=>setBmkStep("controls")} onHome={goHome} onNext={()=>setBmkStep("measure")}/>;
+    if (bmkStep === "measure") return <BmkStepMeasure data={bmkData} onChange={setBmkData} onBack={()=>setBmkStep("allSystems")} onHome={goHome} onNext={()=>setBmkStep("finalChecks")}/>;
+    if (bmkStep === "finalChecks") return <BmkStepFinalChecks data={bmkData} onChange={setBmkData} onBack={()=>setBmkStep("measure")} onHome={goHome} onNext={()=>setBmkStep("services")}/>;
+    if (bmkStep === "services") return <BmkStepServices data={bmkData} onChange={setBmkData} onBack={()=>setBmkStep("finalChecks")} onHome={goHome} onNext={()=>setBmkStep("signature")}/>;
+    if (bmkStep === "signature") return <BmkStepSignature data={bmkData} onChange={setBmkData} onBack={()=>setBmkStep("services")} onHome={goHome} onNext={()=>setBmkStep("customerSig")}/>;
+    if (bmkStep === "customerSig") return <BmkStepCustomerSig data={bmkData} onChange={setBmkData} onBack={()=>setBmkStep("signature")} onHome={goHome} onNext={()=>setBmkStep("company")}/>;
+    if (bmkStep === "company") return (
+      <>
+        <BmkStepCompanyDetails data={bmkEngData} onChange={setBmkEngData} onBack={()=>setBmkStep("customerSig")} onHome={goHome}
+          onOptions={()=>setBmkShowOptions(true)}/>
+        {bmkShowOptions && <BSOptionsMenu
+          onPreview={()=>{setBmkShowOptions(false);setBmkShowPDF(true);}}
+          onSave={async ()=>{
+            if (editingBmkIndex !== null) {
+              setRecords(r=>r.map((rec,idx)=> idx===editingBmkIndex ? {...rec, bmkData, bmkEngData} : rec));
+              setEditingBmkIndex(null);
+              setBmkShowOptions(false);
+              alert("\u2705 Benchmark record updated!");
+            } else {
+              const savedAt = new Date().toISOString();
+              setRecords(r=>[...r,{type:"benchmark",bmkData,bmkEngData,savedAt}]);
+              setBmkShowOptions(false);
+              alert("\u2705 Benchmark record saved to Records!");
+            }
+          }}
+          onClose={()=>setBmkShowOptions(false)}/>}
       </>
     );
   }
