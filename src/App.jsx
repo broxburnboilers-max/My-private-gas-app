@@ -3383,9 +3383,10 @@ const INV_GREEN = "#2a52d4";
 const INV_GREEN_DARK = "#1a3bbf";
 const INV_BLUE = "#2a52d4";
 
-function InvoiceWizard({ sourceRecord, onSave, onClose, invoiceRecords }) {
+function InvoiceWizard({ sourceRecord, onSave, onClose, invoiceRecords, prefillData, isEditing }) {
   const [step, setStep] = useState(0);
-  const invoiceNo = useRef(peekInvoiceNumber());
+  const pf = prefillData || {};
+  const invoiceNo = useRef(isEditing && pf.invoiceNo ? pf.invoiceNo : peekInvoiceNumber());
 
   // Extract client/installation details from source record
   const extractDetails = () => {
@@ -3449,45 +3450,49 @@ function InvoiceWizard({ sourceRecord, onSave, onClose, invoiceRecords }) {
   };
 
   const details = extractDetails();
+  // When editing an existing invoice, or when prefilling a new invoice from a
+  // copied quote, prefillData takes priority over the source-record details.
+  const gf = (field, fallback) => (pf[field] !== undefined && pf[field] !== null ? pf[field] : (details[field] || fallback));
 
   // Step state
-  const [clientName, setClientName] = useState(details.clientName || "");
-  const [clientAddr1, setClientAddr1] = useState(details.clientAddr1 || "");
-  const [clientAddr2, setClientAddr2] = useState(details.clientAddr2 || "");
-  const [clientAddr3, setClientAddr3] = useState(details.clientAddr3 || "");
-  const [clientPostcode, setClientPostcode] = useState(details.clientPostcode || "");
-  const [clientTel, setClientTel] = useState(details.clientTel || "");
-  const [clientEmail, setClientEmail] = useState(details.clientEmail || "");
-  const [instName, setInstName] = useState(details.instName || "");
-  const [instAddr1, setInstAddr1] = useState(details.instAddr1 || "");
-  const [instAddr2, setInstAddr2] = useState(details.instAddr2 || "");
-  const [instAddr3, setInstAddr3] = useState(details.instAddr3 || "");
-  const [instPostcode, setInstPostcode] = useState(details.instPostcode || "");
-  const [instTel, setInstTel] = useState(details.instTel || "");
+  const [clientName, setClientName] = useState(gf("clientName", ""));
+  const [clientAddr1, setClientAddr1] = useState(gf("clientAddr1", ""));
+  const [clientAddr2, setClientAddr2] = useState(gf("clientAddr2", ""));
+  const [clientAddr3, setClientAddr3] = useState(gf("clientAddr3", ""));
+  const [clientPostcode, setClientPostcode] = useState(gf("clientPostcode", ""));
+  const [clientTel, setClientTel] = useState(gf("clientTel", ""));
+  const [clientEmail, setClientEmail] = useState(gf("clientEmail", ""));
+  const [instName, setInstName] = useState(gf("instName", ""));
+  const [instAddr1, setInstAddr1] = useState(gf("instAddr1", ""));
+  const [instAddr2, setInstAddr2] = useState(gf("instAddr2", ""));
+  const [instAddr3, setInstAddr3] = useState(gf("instAddr3", ""));
+  const [instPostcode, setInstPostcode] = useState(gf("instPostcode", ""));
+  const [instTel, setInstTel] = useState(gf("instTel", ""));
 
   // Line items
-  const [lineItems, setLineItems] = useState([]);
+  const [lineItems, setLineItems] = useState(pf.lineItems ? pf.lineItems.map(li => ({ ...li })) : []);
   const [editingItem, setEditingItem] = useState(null); // null or index
 
-  // Payment
-  const [fullyPaid, setFullyPaid] = useState(false);
-  const [paid, setPaid] = useState("0.00");
-  const [paymentMethod, setPaymentMethod] = useState("");
-  const [terms, setTerms] = useState("");
-  const [companyNumber, setCompanyNumber] = useState("");
-  const [vatRegNumber, setVatRegNumber] = useState("");
+  // Payment — only carry over paid status when truly editing an existing invoice.
+  // A fresh invoice (including one copied from a quote) always starts unpaid.
+  const [fullyPaid, setFullyPaid] = useState(isEditing ? !!pf.fullyPaid : false);
+  const [paid, setPaid] = useState(isEditing && pf.paid !== undefined ? String(pf.paid) : "0.00");
+  const [paymentMethod, setPaymentMethod] = useState(isEditing ? (pf.paymentMethod || "") : "");
+  const [terms, setTerms] = useState(pf.terms || "");
+  const [companyNumber, setCompanyNumber] = useState(pf.companyNumber || "");
+  const [vatRegNumber, setVatRegNumber] = useState(pf.vatRegNumber || "");
 
   // Notes
-  const [notes, setNotes] = useState("Includes one year money back guarantee\nAccount name: West Lothian Gas Ltd\nSort code: 04-00-06\nAccount number: 82044776\nThank you for your business");
+  const [notes, setNotes] = useState(pf.notes || "Includes one year money back guarantee\nAccount name: West Lothian Gas Ltd\nSort code: 04-00-06\nAccount number: 82044776\nThank you for your business");
 
   // Company details
-  const [companyName, setCompanyName] = useState("West Lothian Gas Ltd");
-  const [companyAddr, setCompanyAddr] = useState("18 Mauldeth Rd Broxburn");
-  const [companyPostcode2, setCompanyPostcode2] = useState("EH52 6FB");
-  const [companyTel2, setCompanyTel2] = useState("07961768920");
-  const [gasSafeNo2, setGasSafeNo2] = useState("927997");
-  const [issuedBy, setIssuedBy] = useState("Andrew King-Page");
-  const [engineerId, setEngineerId] = useState("5927846");
+  const [companyName, setCompanyName] = useState(pf.companyName || "West Lothian Gas Ltd");
+  const [companyAddr, setCompanyAddr] = useState(pf.companyAddr || "18 Mauldeth Rd Broxburn");
+  const [companyPostcode2, setCompanyPostcode2] = useState(pf.companyPostcode || "EH52 6FB");
+  const [companyTel2, setCompanyTel2] = useState(pf.companyTel || "07961768920");
+  const [gasSafeNo2, setGasSafeNo2] = useState(pf.gasSafeNo || "927997");
+  const [issuedBy, setIssuedBy] = useState(pf.issuedBy || "Andrew King-Page");
+  const [engineerId, setEngineerId] = useState(pf.engineerId || "5927846");
 
   const [showPDFPreview, setShowPDFPreview] = useState(false);
 
@@ -3559,13 +3564,16 @@ function InvoiceWizard({ sourceRecord, onSave, onClose, invoiceRecords }) {
       instName, instAddr1, instAddr2, instAddr3, instPostcode, instTel,
       lineItems, subTotal, taxTotal, total, fullyPaid, paid: paidAmt, outstanding, paymentMethod, terms, companyNumber, vatRegNumber,
       notes, companyName, companyAddr, companyPostcode: companyPostcode2, companyTel: companyTel2, gasSafeNo: gasSafeNo2, issuedBy, engineerId,
-      createdAt: new Date().toISOString(),
+      createdAt: isEditing && pf.createdAt ? pf.createdAt : new Date().toISOString(),
     };
     return (
       <InvoicePDFPreview
         invoiceData={invoiceData}
         onClose={() => setShowPDFPreview(false)}
         onSave={() => {
+          // Editing an existing invoice keeps its original invoice number rather than
+          // minting a new one from the counter.
+          if (isEditing) { onSave({ ...invoiceData }); return; }
           const finalInvNo = getNextInvoiceNumber();
           invoiceNo.current = finalInvNo;
           onSave({ ...invoiceData, invoiceNo: finalInvNo });
@@ -3579,7 +3587,7 @@ function InvoiceWizard({ sourceRecord, onSave, onClose, invoiceRecords }) {
     <div style={{ position: "fixed", inset: 0, background: "#f0f0f0", zIndex: 3000, display: "flex", flexDirection: "column", fontFamily: "'Segoe UI',sans-serif" }}>
       <div style={headerStyle}>
         <button onClick={onClose} style={{ background: "none", border: "none", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>← Back</button>
-        <span style={{ fontWeight: 700, fontSize: 16 }}>Gas Checker</span>
+        <span style={{ fontWeight: 700, fontSize: 16 }}>{isEditing ? "Edit Invoice" : "Gas Checker"}</span>
         <button onClick={() => setStep(1)} style={{ background: "none", border: "none", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>Next →</button>
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px" }}>
@@ -3965,9 +3973,10 @@ function InvoicePDFPreview({ invoiceData: inv, onClose, onSave, autoDownload, on
 
 // ─── Quote Wizard ─────────────────────────────────────────────────────────────
 // Reuses identical flow to InvoiceWizard but labelled "Quote" throughout
-function QuoteWizard({ sourceRecord, onSave, onClose }) {
+function QuoteWizard({ sourceRecord, onSave, onClose, prefillData, isEditing }) {
   const [step, setStep] = useState(0);
-  const quoteNo = useRef(peekQuoteNumber());
+  const pf = prefillData || {};
+  const quoteNo = useRef(isEditing && pf.quoteNo ? pf.quoteNo : peekQuoteNumber());
 
   const extractDetails = () => {
     if (!sourceRecord) return {};
@@ -3982,35 +3991,36 @@ function QuoteWizard({ sourceRecord, onSave, onClose }) {
   };
 
   const d = extractDetails();
-  const [clientName, setClientName] = useState(d.clientName||"");
-  const [clientAddr1, setClientAddr1] = useState(d.clientAddr1||"");
-  const [clientAddr2, setClientAddr2] = useState(d.clientAddr2||"");
-  const [clientAddr3, setClientAddr3] = useState(d.clientAddr3||"");
-  const [clientPostcode, setClientPostcode] = useState(d.clientPostcode||"");
-  const [clientTel, setClientTel] = useState(d.clientTel||"");
-  const [clientEmail, setClientEmail] = useState(d.clientEmail||"");
-  const [instName, setInstName] = useState(d.instName||"");
-  const [instAddr1, setInstAddr1] = useState(d.instAddr1||"");
-  const [instAddr2, setInstAddr2] = useState(d.instAddr2||"");
-  const [instAddr3, setInstAddr3] = useState(d.instAddr3||"");
-  const [instPostcode, setInstPostcode] = useState(d.instPostcode||"");
-  const [instTel, setInstTel] = useState(d.instTel||"");
-  const [lineItems, setLineItems] = useState([]);
+  const gf = (field, fallback) => (pf[field] !== undefined && pf[field] !== null ? pf[field] : (d[field] || fallback));
+  const [clientName, setClientName] = useState(gf("clientName", ""));
+  const [clientAddr1, setClientAddr1] = useState(gf("clientAddr1", ""));
+  const [clientAddr2, setClientAddr2] = useState(gf("clientAddr2", ""));
+  const [clientAddr3, setClientAddr3] = useState(gf("clientAddr3", ""));
+  const [clientPostcode, setClientPostcode] = useState(gf("clientPostcode", ""));
+  const [clientTel, setClientTel] = useState(gf("clientTel", ""));
+  const [clientEmail, setClientEmail] = useState(gf("clientEmail", ""));
+  const [instName, setInstName] = useState(gf("instName", ""));
+  const [instAddr1, setInstAddr1] = useState(gf("instAddr1", ""));
+  const [instAddr2, setInstAddr2] = useState(gf("instAddr2", ""));
+  const [instAddr3, setInstAddr3] = useState(gf("instAddr3", ""));
+  const [instPostcode, setInstPostcode] = useState(gf("instPostcode", ""));
+  const [instTel, setInstTel] = useState(gf("instTel", ""));
+  const [lineItems, setLineItems] = useState(pf.lineItems ? pf.lineItems.map(li => ({ ...li })) : []);
   const [editingItem, setEditingItem] = useState(null);
-  const [fullyPaid, setFullyPaid] = useState(false);
-  const [paid, setPaid] = useState("0.00");
-  const [paymentMethod, setPaymentMethod] = useState("");
-  const [terms, setTerms] = useState("");
-  const [companyNumber, setCompanyNumber] = useState("");
-  const [vatRegNumber, setVatRegNumber] = useState("");
-  const [notes, setNotes] = useState("Includes one year money back guarantee\nAccount name: West Lothian Gas Ltd\nSort code: 04-00-06\nAccount number: 82044776\nThank you for your business");
-  const [companyName, setCompanyName] = useState("West Lothian Gas Ltd");
-  const [companyAddr, setCompanyAddr] = useState("18 Mauldeth Rd Broxburn");
-  const [companyPostcode2, setCompanyPostcode2] = useState("EH52 6FB");
-  const [companyTel2, setCompanyTel2] = useState("07961768920");
-  const [gasSafeNo2, setGasSafeNo2] = useState("927997");
-  const [issuedBy, setIssuedBy] = useState("Andrew King-Page");
-  const [engineerId, setEngineerId] = useState("5927846");
+  const [fullyPaid, setFullyPaid] = useState(isEditing ? !!pf.fullyPaid : false);
+  const [paid, setPaid] = useState(isEditing && pf.paid !== undefined ? String(pf.paid) : "0.00");
+  const [paymentMethod, setPaymentMethod] = useState(isEditing ? (pf.paymentMethod || "") : "");
+  const [terms, setTerms] = useState(pf.terms || "");
+  const [companyNumber, setCompanyNumber] = useState(pf.companyNumber || "");
+  const [vatRegNumber, setVatRegNumber] = useState(pf.vatRegNumber || "");
+  const [notes, setNotes] = useState(pf.notes || "Includes one year money back guarantee\nAccount name: West Lothian Gas Ltd\nSort code: 04-00-06\nAccount number: 82044776\nThank you for your business");
+  const [companyName, setCompanyName] = useState(pf.companyName || "West Lothian Gas Ltd");
+  const [companyAddr, setCompanyAddr] = useState(pf.companyAddr || "18 Mauldeth Rd Broxburn");
+  const [companyPostcode2, setCompanyPostcode2] = useState(pf.companyPostcode || "EH52 6FB");
+  const [companyTel2, setCompanyTel2] = useState(pf.companyTel || "07961768920");
+  const [gasSafeNo2, setGasSafeNo2] = useState(pf.gasSafeNo || "927997");
+  const [issuedBy, setIssuedBy] = useState(pf.issuedBy || "Andrew King-Page");
+  const [engineerId, setEngineerId] = useState(pf.engineerId || "5927846");
   const [showPDFPreview, setShowPDFPreview] = useState(false);
   const [contactError, setContactError] = useState("");
 
@@ -4058,15 +4068,15 @@ function QuoteWizard({ sourceRecord, onSave, onClose }) {
   );
 
   if (showPDFPreview) {
-    const quoteData = { quoteNo: quoteNo.current, clientName, clientAddr1, clientAddr2, clientAddr3, clientPostcode, clientTel, clientEmail, instName, instAddr1, instAddr2, instAddr3, instPostcode, instTel, lineItems, subTotal, taxTotal, total, fullyPaid, paid: paidAmt, outstanding, paymentMethod, terms, companyNumber, vatRegNumber, notes, companyName, companyAddr, companyPostcode: companyPostcode2, companyTel: companyTel2, gasSafeNo: gasSafeNo2, issuedBy, engineerId, createdAt: new Date().toISOString() };
-    return <QuotePDFPreview quoteData={quoteData} onClose={() => setShowPDFPreview(false)} onSave={() => { const finalNo = getNextQuoteNumber(); quoteNo.current = finalNo; onSave({ ...quoteData, quoteNo: finalNo }); }} />;
+    const quoteData = { quoteNo: quoteNo.current, clientName, clientAddr1, clientAddr2, clientAddr3, clientPostcode, clientTel, clientEmail, instName, instAddr1, instAddr2, instAddr3, instPostcode, instTel, lineItems, subTotal, taxTotal, total, fullyPaid, paid: paidAmt, outstanding, paymentMethod, terms, companyNumber, vatRegNumber, notes, companyName, companyAddr, companyPostcode: companyPostcode2, companyTel: companyTel2, gasSafeNo: gasSafeNo2, issuedBy, engineerId, createdAt: isEditing && pf.createdAt ? pf.createdAt : new Date().toISOString() };
+    return <QuotePDFPreview quoteData={quoteData} onClose={() => setShowPDFPreview(false)} onSave={() => { if (isEditing) { onSave({ ...quoteData }); return; } const finalNo = getNextQuoteNumber(); quoteNo.current = finalNo; onSave({ ...quoteData, quoteNo: finalNo }); }} />;
   }
 
   if (step === 0) return (
     <div style={{ position:"fixed", inset:0, background:LIGHT_BG, zIndex:3000, display:"flex", flexDirection:"column", fontFamily:"'Segoe UI',sans-serif" }}>
       <div style={headerStyle}>
         <button onClick={onClose} style={{ background:"none", border:"none", color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer" }}>← Back</button>
-        <span style={{ fontWeight:700, fontSize:16 }}>New Quote</span>
+        <span style={{ fontWeight:700, fontSize:16 }}>{isEditing ? "Edit Quote" : "New Quote"}</span>
         <button onClick={() => setStep(1)} style={{ background:"none", border:"none", color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer" }}>Next →</button>
       </div>
       <div style={{ flex:1, overflowY:"auto", padding:"12px 14px" }}>
@@ -4383,7 +4393,7 @@ function QuotePDFPreview({ quoteData: q, onClose, onSave }) {
 }
 
 // ─── Quotes Folder Screen ─────────────────────────────────────────────────────
-function QuotesScreen({ quotes, onBack, onHome, onDelete, onConvertToInvoice }) {
+function QuotesScreen({ quotes, onBack, onHome, onDelete, onConvertToInvoice, onEdit }) {
   const [selected, setSelected] = useState(null);
   const [viewing, setViewing] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -4419,6 +4429,7 @@ function QuotesScreen({ quotes, onBack, onHome, onDelete, onConvertToInvoice }) 
             <div style={{ fontSize:12, color:"#aaa", textAlign:"center", marginBottom:20 }}>Choose an action</div>
             {[
               { label:"👁 Download", fn:()=>{ setViewing(selected); setSelected(null); }, color:"#222" },
+              { label:"✏️ Edit", fn:()=>{ onEdit(selected); setSelected(null); }, color:"#222" },
               { label:"📄 Copy to Invoice", fn:()=>{ onConvertToInvoice(selected); setSelected(null); }, color:DARK_BLUE },
               { label:"🗑 Delete", fn:()=>{ setConfirmDelete(selected); setSelected(null); }, color:"#c00" },
             ].map(({label,fn,color})=>(
@@ -4439,7 +4450,7 @@ function QuotesScreen({ quotes, onBack, onHome, onDelete, onConvertToInvoice }) 
 }
 
 // ─── Invoices Folder Screen ───────────────────────────────────────────────────
-function InvoicesList({ invoices, title, onBack, onHome, onDelete, onMarkPaid }) {
+function InvoicesList({ invoices, title, onBack, onHome, onDelete, onMarkPaid, onEdit }) {
   const [selected, setSelected] = useState(null);
   const [viewing, setViewing] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -4543,6 +4554,7 @@ function InvoicesList({ invoices, title, onBack, onHome, onDelete, onMarkPaid })
             <div style={{ fontSize: 12, color: "#aaa", textAlign: "center", marginBottom: 20 }}>Choose an action</div>
             {[
               { label: "👁 Preview", fn: () => { setViewing(selected); setSelected(null); }, color: "#222" },
+              { label: "✏️ Edit", fn: () => { onEdit(selected); setSelected(null); }, color: "#222" },
               ...(!invoices[selected]?.fullyPaid && onMarkPaid ? [{ label: "✅ Mark as Paid", fn: () => { onMarkPaid(selected); setSelected(null); }, color: PAID_COLOR }] : []),
               { label: "🗑 Delete", fn: () => { setConfirmDelete(selected); setSelected(null); }, color: "#c00" },
             ].map(({ label, fn, color }) => (
@@ -4885,7 +4897,7 @@ function InvoiceImportScreen({ onBack, onHome, onImport }) {
 }
 
 
-function InvoicesScreen({ invoices, onBack, onHome, onDelete, onMarkPaid, onImport }) {
+function InvoicesScreen({ invoices, onBack, onHome, onDelete, onMarkPaid, onImport, onEdit }) {
   const [subFolder, setSubFolder] = useState(null);
 
   const allInvoices = invoices.map((inv, i) => ({ ...inv, _origIdx: i }));
@@ -4900,6 +4912,7 @@ function InvoicesScreen({ invoices, onBack, onHome, onDelete, onMarkPaid, onImpo
       onHome={onHome}
       onDelete={(i) => onDelete(unpaidInvoices[i]._origIdx)}
       onMarkPaid={(i) => { onMarkPaid(unpaidInvoices[i]._origIdx); }}
+      onEdit={(i) => onEdit(unpaidInvoices[i]._origIdx)}
     />
   );
 
@@ -4910,6 +4923,7 @@ function InvoicesScreen({ invoices, onBack, onHome, onDelete, onMarkPaid, onImpo
       onBack={() => setSubFolder(null)}
       onHome={onHome}
       onDelete={(i) => onDelete(paidInvoices[i]._origIdx)}
+      onEdit={(i) => onEdit(paidInvoices[i]._origIdx)}
     />
   );
 
@@ -6041,7 +6055,7 @@ function RemindersScreen({ records, onBack, onHome, engineerData }) {
   );
 }
 
-function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, onEditGi, invoices, onCreateInvoice, onDeleteInvoice, onMarkPaid, quotes, onDeleteQuote, onConvertQuoteToInvoice, onImportInvoices, onImportQuotes, onImportReports, onImportFolders, engineerData, accountReports, onDeleteReport, yearlyReports, onDeleteYearly, onRebuildYearly, onUpdateReport, gscFolders, onAddFolder, onRenameFolder, onDeleteFolder, onUpdateRecord }) {
+function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, onEditGi, invoices, onCreateInvoice, onDeleteInvoice, onMarkPaid, quotes, onDeleteQuote, onConvertQuoteToInvoice, onImportInvoices, onImportQuotes, onImportReports, onImportFolders, engineerData, accountReports, onDeleteReport, yearlyReports, onDeleteYearly, onRebuildYearly, onUpdateReport, gscFolders, onAddFolder, onRenameFolder, onDeleteFolder, onUpdateRecord, onEditInvoice, onEditQuote }) {
   const [folder, setFolder] = useState(null);
 
   if (folder === "reminders") return <RemindersScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} engineerData={engineerData}/>;
@@ -6050,8 +6064,8 @@ function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, 
   if (folder === "gw") return <GasWorksRecordsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete} onEdit={onEditGw} onCreateInvoice={onCreateInvoice}/>;
   if (folder === "gi") return <GasIsolationRecordsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete} onEdit={onEditGi} onCreateInvoice={onCreateInvoice}/>;
   if (folder === "wn") return <WarningNoticeRecordsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete}/>;
-  if (folder === "inv") return <InvoicesScreen invoices={invoices} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDeleteInvoice} onMarkPaid={onMarkPaid} onImport={onCreateInvoice}/>;
-  if (folder === "quotes") return <QuotesScreen quotes={quotes||[]} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDeleteQuote} onConvertToInvoice={(i)=>onConvertQuoteToInvoice(i)}/>;
+  if (folder === "inv") return <InvoicesScreen invoices={invoices} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDeleteInvoice} onMarkPaid={onMarkPaid} onImport={onCreateInvoice} onEdit={onEditInvoice}/>;
+  if (folder === "quotes") return <QuotesScreen quotes={quotes||[]} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDeleteQuote} onConvertToInvoice={(i)=>onConvertQuoteToInvoice(i)} onEdit={onEditQuote}/>;
   if (folder === "reports") return <AccountReportsScreen reports={accountReports||[]} onBack={()=>setFolder(null)} onHome={onHome} onDelete={(i)=>{ if(onDeleteReport) onDeleteReport(i); }} yearlyReports={yearlyReports||[]} onDeleteYearly={(i)=>{ if(onDeleteYearly) onDeleteYearly(i); }} onRebuildYearly={onRebuildYearly} onUpdateReport={onUpdateReport}/>;
 
   const exportRecords = () => {
@@ -8155,6 +8169,9 @@ function App() {
   const [quoteWizardOpen, setQuoteWizardOpen] = useState(false);
   const [invoiceWizardOpen, setInvoiceWizardOpen] = useState(false);
   const [invoiceImportOpen, setInvoiceImportOpen] = useState(false);
+  const [editingInvoiceIndex, setEditingInvoiceIndex] = useState(null);
+  const [editingQuoteIndex, setEditingQuoteIndex] = useState(null);
+  const [quoteToInvoiceDraft, setQuoteToInvoiceDraft] = useState(null);
 
   // Persist records to localStorage whenever they change
   useEffect(() => {
@@ -8294,7 +8311,9 @@ function App() {
     onMarkPaid={(i)=>setInvoices(prev=>prev.map((inv,idx)=>idx===i ? {...inv, fullyPaid:true, paid:inv.total, outstanding:0} : inv))}
     quotes={quotes}
     onDeleteQuote={(i)=>setQuotes(prev=>prev.filter((_,idx)=>idx!==i))}
-    onConvertQuoteToInvoice={(i)=>{ const q=quotes[i]; const invData={ ...q, invoiceNo:getNextInvoiceNumber(), createdAt:new Date().toISOString(), fullyPaid:false, paid:0, outstanding:q.total }; setInvoices(prev=>[...prev,invData]); alert("✅ Quote converted to Invoice and saved!"); }}
+    onConvertQuoteToInvoice={(i)=>{ setQuoteToInvoiceDraft(quotes[i]); }}
+    onEditInvoice={(i)=>setEditingInvoiceIndex(i)}
+    onEditQuote={(i)=>setEditingQuoteIndex(i)}
     onImportInvoices={(imported)=>setInvoices(prev=>[...prev,...imported.filter(n=>!prev.some(e=>e.invoiceNo===n.invoiceNo))])}
     onImportQuotes={(imported)=>setQuotes(prev=>[...prev,...imported.filter(n=>!prev.some(e=>e.quoteNo===n.quoteNo))])}
     onImportReports={(importedMonthly, importedYearly)=>{
@@ -8384,6 +8403,9 @@ function App() {
   }}/>;
   if (quoteWizardOpen) return <QuoteWizard sourceRecord={null} onSave={(qData)=>{ setQuotes(prev=>[...prev,qData]); alert("✅ Quote saved to Quotes folder!"); setQuoteWizardOpen(false); goHome(); }} onClose={()=>{ setQuoteWizardOpen(false); setScreen("newJob"); }}/>;
   if (invoiceWizardOpen) return <InvoiceWizard sourceRecord={null} onSave={(invData)=>{ setInvoices(prev=>[...prev, invData]); alert("✅ Invoice saved to Invoices folder!"); setInvoiceWizardOpen(false); goHome(); }} onClose={()=>{ setInvoiceWizardOpen(false); setScreen("newJob"); }} invoiceRecords={invoices}/>;
+  if (editingInvoiceIndex !== null) return <InvoiceWizard sourceRecord={null} prefillData={invoices[editingInvoiceIndex]} isEditing={true} onSave={(invData)=>{ setInvoices(prev=>prev.map((inv,idx)=>idx===editingInvoiceIndex?invData:inv)); setEditingInvoiceIndex(null); alert("✅ Invoice updated!"); }} onClose={()=>setEditingInvoiceIndex(null)} invoiceRecords={invoices}/>;
+  if (editingQuoteIndex !== null) return <QuoteWizard sourceRecord={null} prefillData={quotes[editingQuoteIndex]} isEditing={true} onSave={(qData)=>{ setQuotes(prev=>prev.map((q,idx)=>idx===editingQuoteIndex?qData:q)); setEditingQuoteIndex(null); alert("✅ Quote updated!"); }} onClose={()=>setEditingQuoteIndex(null)}/>;
+  if (quoteToInvoiceDraft !== null) return <InvoiceWizard sourceRecord={null} prefillData={quoteToInvoiceDraft} isEditing={false} onSave={(invData)=>{ setInvoices(prev=>[...prev, invData]); setQuoteToInvoiceDraft(null); alert("✅ Invoice created from quote!"); }} onClose={()=>setQuoteToInvoiceDraft(null)} invoiceRecords={invoices}/>;
 
   if (screen === "newJob") return <NewJobScreen onBack={()=>setScreen("home")} onHome={goHome}
     onSelect={job => { if(job==="Gas Safety Certificate") { setScreen("gsc"); setSubScreen("fileRef"); } else if(job==="Boiler Service") { setScreen("bs"); setBsSubScreen("fileRef"); } else if(job==="Gas Works") { setScreen("gasWorks"); setGwSubScreen("fileRef"); } else if(job==="Gas Isolation") { setScreen("gasIsolation"); setGiSubScreen("form"); } else if(job==="Invoice") { setInvoiceWizardOpen(true); } else if(job==="Quote") { setQuoteWizardOpen(true); } else if(job==="Warning Notice") { setScreen("warningNotice"); setWnSubScreen("fileRef"); } else alert(`${job} coming soon`); }}/>
