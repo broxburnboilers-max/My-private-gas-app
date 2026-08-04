@@ -2613,6 +2613,17 @@ function StepFinalChecks({ data, onChange, onNext, onBack, onHome }) {
   const [showCal, setShowCal] = useState(false);
   const inspDate = data.inspectionDate || nextYear();
 
+  // Bug fix: the button below shows a default "1 year from today" date even before
+  // the user opens the calendar, but that default was never actually saved to the
+  // record unless the user tapped a day in the calendar picker. That left the due
+  // date blank on saved certificates (showing "No due date" in Reminders) even
+  // though a date appeared to be set on screen. Persist the default automatically
+  // on first render so a due date is always saved.
+  useEffect(() => {
+    if (data.inspectionDate === undefined) onChange({...data, inspectionDate: nextYear()});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function ToggleBtn({ label, field }) {
     const val = data[field] !== undefined ? data[field] : "YES";
     // Ensure field is initialised in data on first render
@@ -5020,7 +5031,11 @@ function GasSafetyCertsScreen({ records, onBack, onHome, onDelete, onCreateInvoi
   const now = new Date();
   function getDueDate(r) {
     const fc = r.finalChecks || {};
-    return fc.inspectionDate ? new Date(fc.inspectionDate) : null;
+    if (fc.inspectionDate) return new Date(fc.inspectionDate);
+    // Fallback for older records saved before the due date was reliably stored:
+    // estimate 1 year after the certificate was created instead of showing nothing.
+    if (r.savedAt) { const d = new Date(r.savedAt); if (!isNaN(d)) return new Date(d.getFullYear()+1, d.getMonth(), d.getDate()); }
+    return null;
   }
   function isDueSoon(r) {
     const d = getDueDate(r);
@@ -5782,7 +5797,9 @@ function RemindersScreen({ records, onBack, onHome, engineerData }) {
     let name, addr1, addr2, postcode, tel, email, dueDate, type, certRef;
     if (!r.type || r.type === "gsc") {
       const cd = r.certData || {}; const fc = r.finalChecks || {};
-      dueDate = fc.inspectionDate ? new Date(fc.inspectionDate) : null;
+      if (fc.inspectionDate) dueDate = new Date(fc.inspectionDate);
+      else if (r.savedAt) { const d = new Date(r.savedAt); dueDate = isNaN(d) ? null : new Date(d.getFullYear()+1, d.getMonth(), d.getDate()); }
+      else dueDate = null;
       name = cd.clientName || cd.instName || "";
       addr1 = cd.instAddr1 || cd.clientAddr1 || "";
       addr2 = cd.instAddr2 || cd.clientAddr2 || "";
@@ -6115,7 +6132,10 @@ function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, 
   const now30 = new Date(); const cutoff30 = new Date(now30); cutoff30.setDate(cutoff30.getDate()+30);
   const autoDueCount = records.filter(r => {
     let dueDate = null;
-    if (!r.type || r.type==="gsc") dueDate = r.finalChecks?.inspectionDate ? new Date(r.finalChecks.inspectionDate) : null;
+    if (!r.type || r.type==="gsc") {
+      if (r.finalChecks?.inspectionDate) dueDate = new Date(r.finalChecks.inspectionDate);
+      else if (r.savedAt) { const d = new Date(r.savedAt); dueDate = isNaN(d) ? null : new Date(d.getFullYear()+1, d.getMonth(), d.getDate()); }
+    }
     else if (r.type==="bs") { const rawD = r.bsEngData?.certDate || r.serviceData?.certDate || r.savedAt || null; const cd = rawD ? new Date(rawD) : null; dueDate = cd && !isNaN(cd) ? new Date(cd.getFullYear()+1,cd.getMonth(),cd.getDate()) : null; }
     return dueDate && !isNaN(dueDate) && dueDate >= now30 && dueDate <= cutoff30;
   }).length;
