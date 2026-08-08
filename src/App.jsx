@@ -9216,6 +9216,18 @@ function App() {
     try { localStorage.setItem("gsc_records", JSON.stringify(records)); } catch {}
   }, [records]);
 
+  // Sync records to the cloud backend (Netlify Blobs) so reminder automation
+  // can read due dates and contact details without needing this device online.
+  useEffect(() => {
+    const syncKey = import.meta.env.VITE_SYNC_KEY;
+    if (!syncKey) return; // sync disabled until the key is configured on Netlify
+    fetch("/.netlify/functions/gas-records", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": syncKey },
+      body: JSON.stringify({ records }),
+    }).catch(() => {}); // fail silently if offline — localStorage remains the source of truth on-device
+  }, [records]);
+
   // Persist invoices to localStorage
   useEffect(() => {
     try { localStorage.setItem("invoices", JSON.stringify(invoices)); } catch {}
