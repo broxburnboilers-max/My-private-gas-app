@@ -9,9 +9,14 @@
 // Both methods require a matching `x-api-key` header (value comes from the
 // VITE_SYNC_KEY environment variable configured in the Netlify site settings).
 
-const { getStore } = require("@netlify/blobs");
+const { getStore, connectLambda } = require("@netlify/blobs");
 
 exports.handler = async (event) => {
+  // This function uses the classic ("Lambda compatibility") handler style,
+  // which does not auto-populate the Netlify Blobs environment. connectLambda
+  // wires it up manually using the incoming request event.
+  connectLambda(event);
+
   const headers = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "Content-Type, x-api-key",
