@@ -41,6 +41,18 @@ exports.handler = async (event) => {
     if (event.httpMethod === "POST") {
       const body = JSON.parse(event.body || "{}");
       const records = Array.isArray(body.records) ? body.records : [];
+      // Refuse to overwrite existing data with an empty array unless explicitly
+      // forced — protects against a fresh browser/device wiping everyone's data.
+      if (records.length === 0 && !body.force) {
+        const existing = await store.get("records", { type: "json" });
+        if (existing && Array.isArray(existing.records) && existing.records.length > 0) {
+          return {
+            statusCode: 409,
+            headers,
+            body: JSON.stringify({ error: "Refusing to overwrite existing records with an empty array. Pass force:true to override." }),
+          };
+        }
+      }
       await store.setJSON("records", { records, updatedAt: new Date().toISOString() });
       return {
         statusCode: 200,

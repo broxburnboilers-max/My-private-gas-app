@@ -9221,6 +9221,9 @@ function App() {
   useEffect(() => {
     const syncKey = import.meta.env.VITE_SYNC_KEY;
     if (!syncKey) return; // sync disabled until the key is configured on Netlify
+    // Never sync an empty array — protects against a fresh browser/device with
+    // no local data accidentally wiping out everyone else's synced records.
+    if (!records || records.length === 0) return;
     fetch("/.netlify/functions/gas-records", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": syncKey },
