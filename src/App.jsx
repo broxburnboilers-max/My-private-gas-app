@@ -9684,20 +9684,31 @@ function App() {
   // signatures are cleared so the engineer captures fresh ones; everything
   // else (client/property details, appliance info, prior answers) carries
   // over so only what's actually changed needs editing.
+  //
+  // Company/engineer identity (trading name, address, Gas Safe No, engineer
+  // name - which also doubles as the cursive "signature" on the exported
+  // PDF) is ALWAYS taken from whichever company is currently logged in, not
+  // from the original record. This matters most for the Imported Certs
+  // archive - which both West Lothian Gas and Coventry Plumbing Services can
+  // browse and renew from - so a certificate renewed under a Coventry
+  // Plumbing Services login always comes out with Coventry Plumbing
+  // Services' own company details and engineer, never the archive's
+  // original (or the other company's) details.
   function renewCertRecord(rec) {
     const type = rec.type || "gsc";
+    const activeProfile = companyProfile(company);
     if (type === "gsc") {
       setCertData({ ...defaultCertData(), ...(rec.certData || {}) });
       setAppliances((rec.appliances || []).map(a => ({ ...a })));
       setFaults([]);
       setFinalChecks({ ...(rec.finalChecks || {}), inspectionDate: nextYear() });
       setSignatureData({ ...(rec.signatureData || {}), engineerSigImage: null });
-      { const eng = { ...(rec.engineerData || {}) }; delete eng.certDate; setEngineerData(prev => ({ ...prev, ...eng })); }
+      setEngineerData(prev => ({ ...prev, companyName:activeProfile.companyName, companyAddr:activeProfile.companyAddr, companyPostcode:activeProfile.companyPostcode, companyTel:activeProfile.companyTel, companyEmail:activeProfile.companyEmail, companyWeb:activeProfile.companyWeb, gasSafeNo:activeProfile.gasSafeNo, engineerName:activeProfile.engineerName, gasId:activeProfile.gasId }));
       setScreen("gsc"); setSubScreen("fileRef");
     } else if (type === "bs") {
       setServiceData({ ...defaultServiceData(), ...(rec.serviceData || {}) });
       setBsSigData({ ...(rec.bsSigData || {}), engineerSigImage: "" });
-      { const eng = { ...(rec.bsEngData || {}) }; delete eng.certDate; delete eng.timeArrival; delete eng.timeDeparture; delete eng.reportDate; setBsEngData(prev => ({ ...prev, ...eng })); }
+      setBsEngData(prev => ({ ...prev, companyName:activeProfile.companyName, companyAddr:activeProfile.companyAddr, companyPostcode:activeProfile.companyPostcode, companyTel:activeProfile.companyTel, gasSafeNo:activeProfile.gasSafeNo, engineerName:activeProfile.engineerName, gasId:activeProfile.gasId }));
       setEditingBsIndex(null);
       setScreen("bs"); setBsSubScreen("fileRef");
     } else if (type === "gw") {
