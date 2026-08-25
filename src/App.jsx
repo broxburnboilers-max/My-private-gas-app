@@ -1576,7 +1576,7 @@ function MonthlyReportScreen({ onBack, onHome, invoices, onSaveReport }) {
 }
 
 
-function HomeScreen({ onNew, onRecords, onEmail, onGiEmail, onGwEmail, onGscEmail, onBsEmail, onReport }) {
+function HomeScreen({ onNew, onRecords, onSearch, onEmail, onGiEmail, onGwEmail, onGscEmail, onBsEmail, onReport }) {
   function CircleBtn({ onClick, label, children }) {
     const [hov, setHov] = useState(false);
     return (
@@ -1600,6 +1600,9 @@ function HomeScreen({ onNew, onRecords, onEmail, onGiEmail, onGwEmail, onGscEmai
           </CircleBtn>
           <CircleBtn onClick={onRecords} label="Records">
             <svg width="56" height="48" viewBox="0 0 56 48" fill="none"><rect x="2" y="10" width="52" height="36" rx="5" fill={BLUE}/><rect x="2" y="6" width="22" height="14" rx="5" fill={BLUE}/><rect x="8" y="18" width="40" height="24" rx="3" fill="rgba(0,0,0,0.12)"/></svg>
+          </CircleBtn>
+          <CircleBtn onClick={onSearch} label="Search & Renew">
+            <svg width="52" height="52" viewBox="0 0 52 52" fill="none"><circle cx="22" cy="22" r="15" stroke={BLUE} strokeWidth="5"/><line x1="33" y1="33" x2="47" y2="47" stroke={BLUE} strokeWidth="5" strokeLinecap="round"/></svg>
           </CircleBtn>
           <CircleBtn onClick={onEmail} label="Email Import">
             <svg width="52" height="48" viewBox="0 0 52 48" fill="none"><rect x="2" y="6" width="48" height="36" rx="5" fill={BLUE}/><polyline points="2,6 26,28 50,6" fill="none" stroke="white" strokeWidth="3.5"/></svg>
@@ -6227,6 +6230,102 @@ function RemindersScreen({ records, onBack, onHome, engineerData }) {
   );
 }
 
+// ─── Search Certificates & Renew ─────────────────────────────────────────────
+// Pulls a normalised {typeLabel, icon, color, name, address, ref, dateLabel,
+// renewable} summary out of any record shape so they can all be searched and
+// listed together regardless of certificate type.
+function getCertSummary(r) {
+  const type = r.type || "gsc";
+  const savedAt = r.savedAt ? new Date(r.savedAt) : null;
+  const dateLabel = savedAt && !isNaN(savedAt) ? savedAt.toLocaleDateString("en-GB") : "No date";
+  if (type === "gsc") {
+    const cd = r.certData || {};
+    return { typeLabel:"Gas Safety Certificate", icon:"📋", color:BLUE, name:cd.clientName||"Unknown Client", address:[cd.instAddr1,cd.instAddr2,cd.instPostcode].filter(Boolean).join(", "), ref:cd.certRef||"", dateLabel, renewable:true };
+  }
+  if (type === "bs") {
+    const sd = r.serviceData || {};
+    return { typeLabel:"Boiler Service", icon:"🔧", color:"#1a3a8f", name:sd.clientName||"Unknown Client", address:[sd.instAddr1,sd.instAddr2,sd.instPostcode].filter(Boolean).join(", "), ref:sd.certRef||"", dateLabel, renewable:true };
+  }
+  if (type === "gw") {
+    const gd = r.gwData || {};
+    return { typeLabel:"Gas Works", icon:"🔨", color:"#b45309", name:gd.project||"Unknown Job", address:gd.address||"", ref:gd.project||"", dateLabel, renewable:true };
+  }
+  if (type === "gi") {
+    const gi = r.giData || {};
+    return { typeLabel:"Gas Isolation", icon:"🚫", color:"#1a7a7a", name:gi.propertyName||gi.contractName||"Unknown Property", address:gi.contractName||"", ref:gi.gasCertNo||"", dateLabel, renewable:true };
+  }
+  if (type === "benchmark") {
+    const bd = r.bmkData || {};
+    return { typeLabel:"Benchmark Commissioning", icon:"🔥", color:"#6d9b3a", name:bd.clientName||"Unknown Client", address:[bd.instAddr1,bd.instAddr2,bd.instPostcode].filter(Boolean).join(", "), ref:bd.certNo||"", dateLabel, renewable:true };
+  }
+  if (type === "wn") {
+    const wf = r.wnFormData || {};
+    return { typeLabel:"Warning Notice", icon:"⚠️", color:"#b91c1c", name:wf.clientName||"Unknown Client", address:[wf.clientAddr1,wf.clientAddr2,wf.clientPostcode].filter(Boolean).join(", "), ref:wf.certRef||"", dateLabel, renewable:false };
+  }
+  return { typeLabel:"Record", icon:"📄", color:"#888", name:"Unknown", address:"", ref:"", dateLabel, renewable:false };
+}
+
+function SearchCertsScreen({ records, onBack, onHome, onRenew }) {
+  const [query, setQuery] = useState("");
+  const [confirmRenew, setConfirmRenew] = useState(null); // index into results
+
+  const all = (records||[]).map((r,i)=>({ rec:r, idx:i, summary:getCertSummary(r) }))
+    .sort((a,b)=> new Date(b.rec.savedAt||0) - new Date(a.rec.savedAt||0));
+
+  const q = query.trim().toLowerCase();
+  const results = q === "" ? all : all.filter(({summary}) => {
+    const haystack = `${summary.name} ${summary.address} ${summary.ref} ${summary.typeLabel}`.toLowerCase();
+    return haystack.includes(q);
+  });
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:LIGHT_BG, fontFamily:"'Segoe UI',sans-serif" }}>
+      <Header title="Search Certificates" onBack={onBack}/>
+      <div style={{ padding:16, paddingBottom:8 }}>
+        <input value={query} onChange={e=>setQuery(e.target.value)} autoFocus placeholder="Search by client name, address or certificate ref/no"
+          style={{ width:"100%", boxSizing:"border-box", padding:"13px 16px", border:"none", borderRadius:10, background:"#fff", fontSize:15, fontFamily:"'Segoe UI',sans-serif", boxShadow:"0 2px 8px rgba(0,0,0,0.08)", outline:"none" }}/>
+      </div>
+      <div style={{ flex:1, overflowY:"auto", padding:"0 16px 16px" }}>
+        {results.length === 0 ? (
+          <div style={{ textAlign:"center", color:"#aaa", marginTop:40, fontSize:15 }}>{q==="" ? "No certificates saved yet" : "No matching certificates found"}</div>
+        ) : results.map(({rec, idx, summary}) => (
+          <div key={idx} style={{ background:"#fff", borderRadius:10, padding:"14px 16px", marginBottom:10, boxShadow:"0 2px 8px rgba(0,0,0,0.06)", borderLeft:`4px solid ${summary.color}` }}>
+            <div style={{ display:"flex", alignItems:"flex-start", gap:12 }}>
+              <div style={{ fontSize:22, flexShrink:0 }}>{summary.icon}</div>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontWeight:700, fontSize:15, color:"#222" }}>{summary.name}</div>
+                <div style={{ fontSize:13, color:"#888", marginTop:2 }}>{summary.address}{summary.ref ? ` · Ref: ${summary.ref}` : ""}</div>
+                <div style={{ fontSize:12, color:summary.color, marginTop:3, fontWeight:600 }}>{summary.typeLabel} · {summary.dateLabel}</div>
+              </div>
+            </div>
+            {summary.renewable && (
+              <button onClick={()=>setConfirmRenew({rec, summary})}
+                style={{ marginTop:12, width:"100%", padding:"10px 0", background:summary.color, color:"#fff", border:"none", borderRadius:8, fontWeight:700, fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+                🔄 Renew
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+      <BottomBar onHome={onHome}/>
+      {confirmRenew && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:3000, padding:20 }}>
+          <div style={{ background:"#fff", borderRadius:16, width:"100%", maxWidth:340, overflow:"hidden", boxShadow:"0 20px 60px rgba(0,0,0,0.3)" }}>
+            <div style={{ padding:"20px 20px 12px", fontWeight:700, fontSize:16, textAlign:"center", color:"#222" }}>Renew {confirmRenew.summary.typeLabel}?</div>
+            <div style={{ padding:"0 20px 20px", fontSize:14, color:"#666", textAlign:"center" }}>This will start a new {confirmRenew.summary.typeLabel} for <strong>{confirmRenew.summary.name}</strong>, pre-filled with last year's details. The original record stays untouched — go through each step to update anything new, then save.</div>
+            <div style={{ display:"flex", borderTop:"1px solid #eee" }}>
+              <button onClick={()=>setConfirmRenew(null)}
+                style={{ flex:1, padding:16, background:"#fff", color:"#444", border:"none", fontWeight:700, fontSize:15, cursor:"pointer", borderRight:"1px solid #eee" }}>Cancel</button>
+              <button onClick={()=>{ const r=confirmRenew.rec; setConfirmRenew(null); onRenew(r); }}
+                style={{ flex:1, padding:16, background:BLUE, color:"#fff", border:"none", fontWeight:700, fontSize:15, cursor:"pointer" }}>Renew</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, onEditGi, onEditBs, onEditBmk, invoices, onCreateInvoice, onDeleteInvoice, onMarkPaid, quotes, onDeleteQuote, onConvertQuoteToInvoice, onImportInvoices, onImportQuotes, onImportReports, onImportFolders, engineerData, accountReports, onDeleteReport, yearlyReports, onDeleteYearly, onRebuildYearly, onUpdateReport, gscFolders, onAddFolder, onRenameFolder, onDeleteFolder, onUpdateRecord, onEditInvoice, onEditQuote }) {
   const [folder, setFolder] = useState(null);
 
@@ -9343,6 +9442,45 @@ function App() {
 
   const goHome = () => { setScreen("home"); setSubScreen(null); };
 
+  // Load a previously saved certificate's data into the matching form as the
+  // starting point for a brand-new certificate one year on. The original
+  // record is left untouched — this never sets an "editing" index, so saving
+  // at the end of the run-through always adds a new record. Dates due for a
+  // refresh (next-inspection dates, visit dates, cert dates) and drawn
+  // signatures are cleared so the engineer captures fresh ones; everything
+  // else (client/property details, appliance info, prior answers) carries
+  // over so only what's actually changed needs editing.
+  function renewCertRecord(rec) {
+    const type = rec.type || "gsc";
+    if (type === "gsc") {
+      setCertData({ ...defaultCertData(), ...(rec.certData || {}) });
+      setAppliances((rec.appliances || []).map(a => ({ ...a })));
+      setFaults([]);
+      setFinalChecks({ ...(rec.finalChecks || {}), inspectionDate: nextYear() });
+      setSignatureData({ ...(rec.signatureData || {}), engineerSigImage: null });
+      { const eng = { ...(rec.engineerData || {}) }; delete eng.certDate; setEngineerData(prev => ({ ...prev, ...eng })); }
+      setScreen("gsc"); setSubScreen("fileRef");
+    } else if (type === "bs") {
+      setServiceData({ ...defaultServiceData(), ...(rec.serviceData || {}) });
+      setBsSigData({ ...(rec.bsSigData || {}), engineerSigImage: "" });
+      { const eng = { ...(rec.bsEngData || {}) }; delete eng.certDate; delete eng.timeArrival; delete eng.timeDeparture; delete eng.reportDate; setBsEngData(prev => ({ ...prev, ...eng })); }
+      setEditingBsIndex(null);
+      setScreen("bs"); setBsSubScreen("fileRef");
+    } else if (type === "gw") {
+      setGwData({ ...defaultGwData(), ...(rec.gwData || {}), date: todayISO(), visit1Date: todayISO(), visit2Date: todayISO() });
+      setEditingGwIndex(null);
+      setScreen("gasWorks"); setGwSubScreen("fileRef");
+    } else if (type === "gi") {
+      setGiData({ ...defaultGiData(), ...(rec.giData || {}), date: todayISO(), time: "", engineerSigImage: null, engineerSignDatetime: "", permitReceiverDatetime: "", permitIssuerDatetime: "", permitReceiverDatetime2: "", closeOutDatetime: "", watesSignDatetime: "" });
+      setScreen("gasIsolation"); setGiSubScreen("form");
+    } else if (type === "benchmark") {
+      setBmkData({ ...defaultBmkData(), ...(rec.bmkData || {}), sigEngineerImg: null, sigDate: todayISO(), sigCustomerImg: null, sigCustomerDate: todayISO() });
+      { const eng = { ...(rec.bmkEngData || {}) }; delete eng.timeArrival; delete eng.timeDeparture; delete eng.reportDate; setBmkEngData(prev => ({ ...prev, ...eng })); }
+      setEditingBmkIndex(null);
+      setScreen("benchmark"); setBmkStep("fileRef");
+    }
+  }
+
   // Appliance editing
   if (subScreen === "applianceForm") {
     return <StepApplianceForm appliance={editIndex!==null?appliances[editIndex]:null} index={editIndex!==null?editIndex:appliances.length}
@@ -9369,6 +9507,8 @@ function App() {
   if (editingInvoiceIndex !== null) return <InvoiceWizard sourceRecord={null} prefillData={invoices[editingInvoiceIndex]} isEditing={true} onSave={(invData)=>{ setInvoices(prev=>prev.map((inv,idx)=>idx===editingInvoiceIndex?invData:inv)); setEditingInvoiceIndex(null); alert("✅ Invoice updated!"); }} onClose={()=>setEditingInvoiceIndex(null)} invoiceRecords={invoices}/>;
   if (editingQuoteIndex !== null) return <QuoteWizard sourceRecord={null} prefillData={quotes[editingQuoteIndex]} isEditing={true} onSave={(qData)=>{ setQuotes(prev=>prev.map((q,idx)=>idx===editingQuoteIndex?qData:q)); setEditingQuoteIndex(null); alert("✅ Quote updated!"); }} onClose={()=>setEditingQuoteIndex(null)}/>;
   if (quoteToInvoiceDraft !== null) return <InvoiceWizard sourceRecord={null} prefillData={quoteToInvoiceDraft} isEditing={false} onSave={(invData)=>{ setInvoices(prev=>[...prev, invData]); setQuoteToInvoiceDraft(null); alert("✅ Invoice created from quote!"); }} onClose={()=>setQuoteToInvoiceDraft(null)} invoiceRecords={invoices}/>;
+
+  if (screen === "searchCerts") return <SearchCertsScreen records={records} onBack={()=>setScreen("home")} onHome={goHome} onRenew={renewCertRecord}/>;
 
   if (screen === "records") return <RecordsScreen records={records} onBack={()=>setScreen("home")} onHome={goHome} onDelete={(i)=>setRecords(r=>r.filter((_,idx)=>idx!==i))} onImport={(imported)=>setRecords(prev=>{
       const merged=[...prev];
@@ -9450,7 +9590,7 @@ function App() {
     onUpdateRecord={(idx, updated)=>setRecords(prev=>prev.map((r,i)=>i===idx?updated:r))}/>;
 
 
-  if (screen === "home") return <HomeScreen onNew={()=>setScreen("newJob")} onRecords={()=>setScreen("records")} onEmail={()=>setScreen("emailImport")} onGiEmail={()=>setScreen("giEmail")} onGwEmail={()=>setScreen("gwEmail")} onGscEmail={()=>setScreen("gscEmail")} onBsEmail={()=>setScreen("bsEmail")} onReport={()=>setScreen("report")}/>;
+  if (screen === "home") return <HomeScreen onNew={()=>setScreen("newJob")} onRecords={()=>setScreen("records")} onSearch={()=>setScreen("searchCerts")} onEmail={()=>setScreen("emailImport")} onGiEmail={()=>setScreen("giEmail")} onGwEmail={()=>setScreen("gwEmail")} onGscEmail={()=>setScreen("gscEmail")} onBsEmail={()=>setScreen("bsEmail")} onReport={()=>setScreen("report")}/>;
   if (screen === "emailImport") return <EmailImportScreen onBack={()=>setScreen("home")} onHome={goHome} defaultEngineerData={engineerData} onImportCerts={(newRecs)=>setRecords(r=>[...r,...newRecs.filter(n=>!r.some(e=>e.savedAt===n.savedAt))])}/>;
   if (screen === "giEmail") return <GasIsolationEmailScreen onBack={()=>setScreen("home")} onHome={goHome} onImport={(newRecs)=>setRecords(r=>[...r,...newRecs.filter(n=>!r.some(e=>e.savedAt===n.savedAt))])}/>;
   if (screen === "gwEmail") return <GasWorksEmailScreen onBack={()=>setScreen("home")} onHome={goHome} onImport={(newRecs)=>setRecords(r=>[...r,...newRecs.filter(n=>!r.some(e=>e.savedAt===n.savedAt))])}/>;
