@@ -6408,11 +6408,65 @@ function SearchCertsScreen({ records, onBack, onHome, onRenew }) {
 // plus a manifest.json listing them, split into Gas Safety and Boiler Service. They
 // are intentionally kept OUT of the normal `records` array/sync so they never affect
 // reminders/due-date automation - this is a read-only archive you can browse and open.
-function ImportedGasCheckerScreen({ onBack, onHome }) {
+// Builds a renewCertRecord()-shaped record from an imported cert's precomputed
+// renewSeed (client/property/appliance details extracted from the archived PDF).
+// Only administrative and physical-appliance fields are ever carried forward -
+// all safety readings, checklist answers, and dates are left blank/default so
+// the engineer captures fresh ones during the run-through, same as a normal renewal.
+function buildRenewRecFromImported(cert, tab) {
+  const seed = cert.renewSeed || {};
+  if (tab === "safety") {
+    const certData = {
+      ...defaultCertData(),
+      clientName: seed.clientName || "",
+      clientAddr1: seed.clientAddr1 || "",
+      clientAddr2: seed.clientAddr2 || "",
+      clientAddr3: seed.clientAddr3 || "",
+      clientPostcode: seed.clientPostcode || "",
+      instAddr1: seed.instAddr1 || "",
+      instAddr2: seed.instAddr2 || "",
+      instAddr3: seed.instAddr3 || "",
+      instPostcode: seed.instPostcode || "",
+    };
+    const appliances = [];
+    if (seed.appliance) {
+      appliances.push({
+        location: seed.appliance.location || "",
+        type: seed.appliance.type || "",
+        make: seed.appliance.make || "",
+        model: seed.appliance.model || "",
+        co2: "", co: "", flueType: seed.appliance.flueType || "",
+        applianceInspected: "Yes", combustion: "", landlordsAppliance: "Yes",
+        operatingPressure: "", heatInput: "", safetyDevices: "Yes",
+        ventilation: "Yes", flueVisual: "Yes", fluePerformance: "PASS",
+        applianceServiced: "Yes", applianceSafe: "Yes",
+      });
+    }
+    return { type: "gsc", certData, appliances, faults: [], finalChecks: {}, signatureData: {}, engineerData: {} };
+  } else {
+    const serviceData = {
+      ...defaultServiceData(),
+      instName: seed.instName || "",
+      clientName: seed.clientName || "",
+      instAddr1: seed.instAddr1 || "",
+      clientAddr1: seed.clientAddr1 || "",
+      instPostcode: seed.instPostcode || "",
+      clientPostcode: seed.clientPostcode || "",
+      boilerMake: seed.boilerMake || "",
+      boilerModel: seed.boilerModel || "",
+      applianceMake: seed.applianceMake || "",
+      applianceModel: seed.applianceModel || "",
+    };
+    return { type: "bs", serviceData, bsSigData: {}, bsEngData: {} };
+  }
+}
+
+function ImportedGasCheckerScreen({ onBack, onHome, onRenewImported }) {
   const [manifest, setManifest] = useState(null);
   const [tab, setTab] = useState("safety");
   const [query, setQuery] = useState("");
   const [error, setError] = useState(null);
+  const [confirmRenew, setConfirmRenew] = useState(null);
   const IMPORT_COLOR = "#0a8a5c";
 
   useEffect(() => {
@@ -6448,23 +6502,45 @@ function ImportedGasCheckerScreen({ onBack, onHome }) {
         {!error && !manifest && <div style={{ textAlign:"center", color:"#aaa", marginTop:40, fontSize:14 }}>Loading…</div>}
         {!error && manifest && filtered.length===0 && <div style={{ textAlign:"center", color:"#aaa", marginTop:40, fontSize:14 }}>No certificates found</div>}
         {!error && manifest && filtered.map((c,i)=>(
-          <a key={i} href={c.url} target="_blank" rel="noopener noreferrer"
-            style={{ display:"flex", alignItems:"center", gap:12, background:"#fff", borderRadius:10, padding:"14px 16px", marginBottom:10, boxShadow:"0 2px 8px rgba(0,0,0,0.06)", borderLeft:`4px solid ${IMPORT_COLOR}`, textDecoration:"none" }}>
-            <div style={{ flex:1 }}>
-              <div style={{ fontSize:11, color:IMPORT_COLOR, fontWeight:700, textTransform:"uppercase", letterSpacing:0.3, marginBottom:2 }}>{tab==="safety" ? "Installation Address" : "Client Address"}</div>
-              <div style={{ fontWeight:700, fontSize:15, color:"#222" }}>{c.reference}</div>
-              <div style={{ fontSize:12, color:"#888", marginTop:3 }}>{c.category} · {c.date}</div>
-            </div>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M5 7l3 3 3-3M2 12h12" stroke={IMPORT_COLOR} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          </a>
+          <div key={i} style={{ background:"#fff", borderRadius:10, padding:"14px 16px", marginBottom:10, boxShadow:"0 2px 8px rgba(0,0,0,0.06)", borderLeft:`4px solid ${IMPORT_COLOR}` }}>
+            <a href={c.url} target="_blank" rel="noopener noreferrer"
+              style={{ display:"flex", alignItems:"center", gap:12, textDecoration:"none" }}>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:11, color:IMPORT_COLOR, fontWeight:700, textTransform:"uppercase", letterSpacing:0.3, marginBottom:2 }}>{tab==="safety" ? "Installation Address" : "Client Address"}</div>
+                <div style={{ fontWeight:700, fontSize:15, color:"#222" }}>{c.reference}</div>
+                <div style={{ fontSize:12, color:"#888", marginTop:3 }}>{c.category} · {c.date}</div>
+              </div>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M5 7l3 3 3-3M2 12h12" stroke={IMPORT_COLOR} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </a>
+            {c.renewSeed && onRenewImported && (
+              <button onClick={()=>setConfirmRenew({cert:c, tab})}
+                style={{ marginTop:12, width:"100%", padding:"10px 0", background:IMPORT_COLOR, color:"#fff", border:"none", borderRadius:8, fontWeight:700, fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+                🔄 Renew
+              </button>
+            )}
+          </div>
         ))}
       </div>
       <BottomBar onHome={onHome}/>
+      {confirmRenew && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:3000, padding:20 }}>
+          <div style={{ background:"#fff", borderRadius:16, width:"100%", maxWidth:340, overflow:"hidden", boxShadow:"0 20px 60px rgba(0,0,0,0.3)" }}>
+            <div style={{ padding:"20px 20px 12px", fontWeight:700, fontSize:16, textAlign:"center", color:"#222" }}>Renew {confirmRenew.tab==="safety" ? "Gas Safety Certificate" : "Boiler Service Record"}?</div>
+            <div style={{ padding:"0 20px 20px", fontSize:14, color:"#666", textAlign:"center" }}>This will start a new {confirmRenew.tab==="safety" ? "gas safety certificate" : "boiler service record"} for <strong>{confirmRenew.cert.reference}</strong>, pre-filled with the client/property/appliance details from the imported archive. Safety readings and checks are left blank for you to enter fresh — go through each step, then save. The new certificate is saved to your live {confirmRenew.tab==="safety" ? "Gas Safety Certificates" : "Boiler Service Records"} folder; the original archived PDF stays untouched.</div>
+            <div style={{ display:"flex", borderTop:"1px solid #eee" }}>
+              <button onClick={()=>setConfirmRenew(null)}
+                style={{ flex:1, padding:16, background:"#fff", color:"#444", border:"none", fontWeight:700, fontSize:15, cursor:"pointer", borderRight:"1px solid #eee" }}>Cancel</button>
+              <button onClick={()=>{ const rec=buildRenewRecFromImported(confirmRenew.cert, confirmRenew.tab); setConfirmRenew(null); onRenewImported(rec); }}
+                style={{ flex:1, padding:16, background:IMPORT_COLOR, color:"#fff", border:"none", fontWeight:700, fontSize:15, cursor:"pointer" }}>Renew</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, onEditGi, onEditBs, onEditBmk, invoices, onCreateInvoice, onDeleteInvoice, onMarkPaid, quotes, onDeleteQuote, onConvertQuoteToInvoice, onImportInvoices, onImportQuotes, onImportReports, onImportFolders, engineerData, accountReports, onDeleteReport, yearlyReports, onDeleteYearly, onRebuildYearly, onUpdateReport, gscFolders, onAddFolder, onRenameFolder, onDeleteFolder, onUpdateRecord, onEditInvoice, onEditQuote, company }) {
+function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, onEditGi, onEditBs, onEditBmk, invoices, onCreateInvoice, onDeleteInvoice, onMarkPaid, quotes, onDeleteQuote, onConvertQuoteToInvoice, onImportInvoices, onImportQuotes, onImportReports, onImportFolders, engineerData, accountReports, onDeleteReport, yearlyReports, onDeleteYearly, onRebuildYearly, onUpdateReport, gscFolders, onAddFolder, onRenameFolder, onDeleteFolder, onUpdateRecord, onEditInvoice, onEditQuote, company, onRenewImported }) {
   const [folder, setFolder] = useState(null);
 
   if (folder === "reminders") return <RemindersScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} engineerData={engineerData}/>;
@@ -6477,7 +6553,7 @@ function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, 
   if (folder === "inv") return <InvoicesScreen invoices={invoices} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDeleteInvoice} onMarkPaid={onMarkPaid} onImport={onCreateInvoice} onEdit={onEditInvoice} company={company}/>;
   if (folder === "quotes") return <QuotesScreen quotes={quotes||[]} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDeleteQuote} onConvertToInvoice={(i)=>onConvertQuoteToInvoice(i)} onEdit={onEditQuote} company={company}/>;
   if (folder === "reports") return <AccountReportsScreen reports={accountReports||[]} onBack={()=>setFolder(null)} onHome={onHome} onDelete={(i)=>{ if(onDeleteReport) onDeleteReport(i); }} yearlyReports={yearlyReports||[]} onDeleteYearly={(i)=>{ if(onDeleteYearly) onDeleteYearly(i); }} onRebuildYearly={onRebuildYearly} onUpdateReport={onUpdateReport}/>;
-  if (folder === "importedGasChecker") return <ImportedGasCheckerScreen onBack={()=>setFolder(null)} onHome={onHome}/>;
+  if (folder === "importedGasChecker") return <ImportedGasCheckerScreen onBack={()=>setFolder(null)} onHome={onHome} onRenewImported={onRenewImported}/>;
 
   const exportRecords = () => {
     // NOTE: invoices and quotes are intentionally excluded from this backup/
@@ -9746,7 +9822,8 @@ function App() {
     onAddFolder={(f)=>setGscFolders(prev=>[...prev, f])}
     onRenameFolder={(id, name)=>setGscFolders(prev=>prev.map(f=>f.id===id?{...f,name}:f))}
     onDeleteFolder={(id)=>{ setGscFolders(prev=>prev.filter(f=>f.id!==id)); setRecords(prev=>prev.map(r=>r.gscFolder===id?{...r,gscFolder:null}:r)); }}
-    onUpdateRecord={(idx, updated)=>setRecords(prev=>prev.map((r,i)=>i===idx?updated:r))}/>;
+    onUpdateRecord={(idx, updated)=>setRecords(prev=>prev.map((r,i)=>i===idx?updated:r))}
+    onRenewImported={renewCertRecord}/>;
 
 
   if (screen === "home") return <HomeScreen onNew={()=>setScreen("newJob")} onRecords={()=>setScreen("records")} onSearch={()=>setScreen("searchCerts")} onEmail={()=>setScreen("emailImport")} onGiEmail={()=>setScreen("giEmail")} onGwEmail={()=>setScreen("gwEmail")} onGscEmail={()=>setScreen("gscEmail")} onBsEmail={()=>setScreen("bsEmail")} onReport={()=>setScreen("report")} company={company} onLogout={()=>setScreen("login")}/>;
