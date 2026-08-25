@@ -5028,10 +5028,12 @@ function InvoiceImportScreen({ onBack, onHome, onImport }) {
 }
 
 
-function InvoicesScreen({ invoices, onBack, onHome, onDelete, onMarkPaid, onImport, onEdit }) {
+function InvoicesScreen({ invoices, onBack, onHome, onDelete, onMarkPaid, onImport, onEdit, company }) {
   const [subFolder, setSubFolder] = useState(null);
 
-  const allInvoices = invoices.map((inv, i) => ({ ...inv, _origIdx: i }));
+  const allInvoices = invoices
+    .map((inv, i) => ({ ...inv, _origIdx: i }))
+    .filter(inv => (inv.company || "wlg") === (company || "wlg"));
   const paidInvoices = allInvoices.filter(inv => inv.fullyPaid);
   const unpaidInvoices = allInvoices.filter(inv => !inv.fullyPaid);
 
@@ -6396,7 +6398,7 @@ function SearchCertsScreen({ records, onBack, onHome, onRenew }) {
   );
 }
 
-function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, onEditGi, onEditBs, onEditBmk, invoices, onCreateInvoice, onDeleteInvoice, onMarkPaid, quotes, onDeleteQuote, onConvertQuoteToInvoice, onImportInvoices, onImportQuotes, onImportReports, onImportFolders, engineerData, accountReports, onDeleteReport, yearlyReports, onDeleteYearly, onRebuildYearly, onUpdateReport, gscFolders, onAddFolder, onRenameFolder, onDeleteFolder, onUpdateRecord, onEditInvoice, onEditQuote }) {
+function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, onEditGi, onEditBs, onEditBmk, invoices, onCreateInvoice, onDeleteInvoice, onMarkPaid, quotes, onDeleteQuote, onConvertQuoteToInvoice, onImportInvoices, onImportQuotes, onImportReports, onImportFolders, engineerData, accountReports, onDeleteReport, yearlyReports, onDeleteYearly, onRebuildYearly, onUpdateReport, gscFolders, onAddFolder, onRenameFolder, onDeleteFolder, onUpdateRecord, onEditInvoice, onEditQuote, company }) {
   const [folder, setFolder] = useState(null);
 
   if (folder === "reminders") return <RemindersScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} engineerData={engineerData}/>;
@@ -6406,17 +6408,19 @@ function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, 
   if (folder === "gi") return <GasIsolationRecordsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete} onEdit={onEditGi} onCreateInvoice={onCreateInvoice}/>;
   if (folder === "bmk") return <BenchmarkRecordsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete} onEdit={onEditBmk} onCreateInvoice={onCreateInvoice}/>;
   if (folder === "wn") return <WarningNoticeRecordsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete}/>;
-  if (folder === "inv") return <InvoicesScreen invoices={invoices} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDeleteInvoice} onMarkPaid={onMarkPaid} onImport={onCreateInvoice} onEdit={onEditInvoice}/>;
+  if (folder === "inv") return <InvoicesScreen invoices={invoices} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDeleteInvoice} onMarkPaid={onMarkPaid} onImport={onCreateInvoice} onEdit={onEditInvoice} company={company}/>;
   if (folder === "quotes") return <QuotesScreen quotes={quotes||[]} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDeleteQuote} onConvertToInvoice={(i)=>onConvertQuoteToInvoice(i)} onEdit={onEditQuote}/>;
   if (folder === "reports") return <AccountReportsScreen reports={accountReports||[]} onBack={()=>setFolder(null)} onHome={onHome} onDelete={(i)=>{ if(onDeleteReport) onDeleteReport(i); }} yearlyReports={yearlyReports||[]} onDeleteYearly={(i)=>{ if(onDeleteYearly) onDeleteYearly(i); }} onRebuildYearly={onRebuildYearly} onUpdateReport={onUpdateReport}/>;
 
   const exportRecords = () => {
+    // NOTE: invoices and quotes are intentionally excluded from this backup/
+    // transfer file. Invoicing data is private to each company login and
+    // must never move between West Lothian Gas and Coventry Plumbing
+    // Services (or any other company) via export/import.
     const bundle = {
       version: 3,
       exportedAt: new Date().toISOString(),
       records: records || [],
-      invoices: invoices || [],
-      quotes: quotes || [],
       accountReports: accountReports || [],
       yearlyReports: yearlyReports || [],
       gscFolders: gscFolders || [],
@@ -6443,18 +6447,14 @@ function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, 
           onImport(data);
           alert(`Imported ${data.length} certificate record(s).`);
         } else if (data.version === 2 || data.version === 3) {
-          let certCount = 0, invCount = 0, quoteCount = 0, reportCount = 0, folderCount = 0;
+          // NOTE: invoices and quotes are intentionally never imported here,
+          // even if an older backup file happens to contain them, so this
+          // transfer mechanism can never move invoicing data between company
+          // logins (e.g. West Lothian Gas <-> Coventry Plumbing Services).
+          let certCount = 0, reportCount = 0, folderCount = 0;
           if (Array.isArray(data.records) && data.records.length) {
             onImport(data.records);
             certCount = data.records.length;
-          }
-          if (Array.isArray(data.invoices) && data.invoices.length && onImportInvoices) {
-            onImportInvoices(data.invoices);
-            invCount = data.invoices.length;
-          }
-          if (Array.isArray(data.quotes) && data.quotes.length && onImportQuotes) {
-            onImportQuotes(data.quotes);
-            quoteCount = data.quotes.length;
           }
           if (data.version === 3) {
             if (Array.isArray(data.accountReports) && data.accountReports.length && onImportReports) {
@@ -6466,7 +6466,7 @@ function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, 
               folderCount = data.gscFolders.length;
             }
           }
-          alert(`✅ Import complete!\n${certCount} certificate(s)\n${invCount} invoice(s)\n${quoteCount} quote(s)${reportCount ? `\n${reportCount} account report(s)` : ""}${folderCount ? `\n${folderCount} GSC folder(s)` : ""}`);
+          alert(`✅ Import complete!\n${certCount} certificate(s)${reportCount ? `\n${reportCount} account report(s)` : ""}${folderCount ? `\n${folderCount} GSC folder(s)` : ""}`);
         } else {
           alert("Invalid file format.");
         }
@@ -9592,11 +9592,11 @@ function App() {
   // buttons on the Records screen) only sets this local state — it does not
   // change `screen` itself. If a screen-based branch were checked first, it
   // would keep matching and the overlay would never render.
-  if (invoiceWizardOpen) return <InvoiceWizard sourceRecord={null} onSave={(invData)=>{ setInvoices(prev=>[...prev, invData]); alert("✅ Invoice saved to Invoices folder!"); setInvoiceWizardOpen(false); goHome(); }} onClose={()=>{ setInvoiceWizardOpen(false); setScreen("newJob"); }} invoiceRecords={invoices}/>;
+  if (invoiceWizardOpen) return <InvoiceWizard sourceRecord={null} onSave={(invData)=>{ setInvoices(prev=>[...prev, {...invData, company}]); alert("✅ Invoice saved to Invoices folder!"); setInvoiceWizardOpen(false); goHome(); }} onClose={()=>{ setInvoiceWizardOpen(false); setScreen("newJob"); }} invoiceRecords={invoices}/>;
   if (quoteWizardOpen) return <QuoteWizard sourceRecord={null} onSave={(qData)=>{ setQuotes(prev=>[...prev,qData]); alert("✅ Quote saved to Quotes folder!"); setQuoteWizardOpen(false); goHome(); }} onClose={()=>{ setQuoteWizardOpen(false); setScreen("newJob"); }}/>;
-  if (editingInvoiceIndex !== null) return <InvoiceWizard sourceRecord={null} prefillData={invoices[editingInvoiceIndex]} isEditing={true} onSave={(invData)=>{ setInvoices(prev=>prev.map((inv,idx)=>idx===editingInvoiceIndex?invData:inv)); setEditingInvoiceIndex(null); alert("✅ Invoice updated!"); }} onClose={()=>setEditingInvoiceIndex(null)} invoiceRecords={invoices}/>;
+  if (editingInvoiceIndex !== null) return <InvoiceWizard sourceRecord={null} prefillData={invoices[editingInvoiceIndex]} isEditing={true} onSave={(invData)=>{ setInvoices(prev=>prev.map((inv,idx)=>idx===editingInvoiceIndex?{...invData, company: inv.company}:inv)); setEditingInvoiceIndex(null); alert("✅ Invoice updated!"); }} onClose={()=>setEditingInvoiceIndex(null)} invoiceRecords={invoices}/>;
   if (editingQuoteIndex !== null) return <QuoteWizard sourceRecord={null} prefillData={quotes[editingQuoteIndex]} isEditing={true} onSave={(qData)=>{ setQuotes(prev=>prev.map((q,idx)=>idx===editingQuoteIndex?qData:q)); setEditingQuoteIndex(null); alert("✅ Quote updated!"); }} onClose={()=>setEditingQuoteIndex(null)}/>;
-  if (quoteToInvoiceDraft !== null) return <InvoiceWizard sourceRecord={null} prefillData={quoteToInvoiceDraft} isEditing={false} onSave={(invData)=>{ setInvoices(prev=>[...prev, invData]); setQuoteToInvoiceDraft(null); alert("✅ Invoice created from quote!"); }} onClose={()=>setQuoteToInvoiceDraft(null)} invoiceRecords={invoices}/>;
+  if (quoteToInvoiceDraft !== null) return <InvoiceWizard sourceRecord={null} prefillData={quoteToInvoiceDraft} isEditing={false} onSave={(invData)=>{ setInvoices(prev=>[...prev, {...invData, company}]); setQuoteToInvoiceDraft(null); alert("✅ Invoice created from quote!"); }} onClose={()=>setQuoteToInvoiceDraft(null)} invoiceRecords={invoices}/>;
 
   if (screen === "searchCerts") return <SearchCertsScreen records={records} onBack={()=>setScreen("home")} onHome={goHome} onRenew={renewCertRecord}/>;
 
@@ -9610,7 +9610,8 @@ function App() {
     onEditBs={(rec)=>{ setServiceData(rec.serviceData); setBsSigData(rec.bsSigData||{}); setBsEngData(rec.bsEngData||{}); setEditingBsIndex(rec._origIdx); setScreen("bs"); setBsSubScreen("fileRef"); }}
     onEditBmk={(rec)=>{ setBmkData(rec.bmkData); setBmkEngData(rec.bmkEngData||{}); setEditingBmkIndex(rec._origIdx); setScreen("benchmark"); setBmkStep("fileRef"); }}
     invoices={invoices}
-    onCreateInvoice={(invData)=>{ setInvoices(prev=>[...prev, invData]); alert("✅ Invoice saved to Invoices folder!"); }}
+    company={company}
+    onCreateInvoice={(invData)=>{ setInvoices(prev=>[...prev, {...invData, company}]); alert("✅ Invoice saved to Invoices folder!"); }}
     onDeleteInvoice={(i)=>setInvoices(prev=>prev.filter((_,idx)=>idx!==i))}
     onMarkPaid={(i)=>setInvoices(prev=>prev.map((inv,idx)=>idx===i ? {...inv, fullyPaid:true, paid:inv.total, outstanding:0} : inv))}
     quotes={quotes}
@@ -9686,7 +9687,7 @@ function App() {
   if (screen === "gwEmail") return <GasWorksEmailScreen onBack={()=>setScreen("home")} onHome={goHome} onImport={(newRecs)=>setRecords(r=>[...r,...newRecs.filter(n=>!r.some(e=>e.savedAt===n.savedAt))])}/>;
   if (screen === "gscEmail") return <GasSafetyCertEmailScreen onBack={()=>setScreen("home")} onHome={goHome} defaultEngineerData={engineerData} onImport={(newRecs)=>setRecords(r=>[...r,...newRecs.filter(n=>!r.some(e=>e.savedAt===n.savedAt))])}/>;
   if (screen === "bsEmail") return <BoilerServiceEmailScreen onBack={()=>setScreen("home")} onHome={goHome} defaultEngData={bsEngData} onImport={(newRecs)=>setRecords(r=>[...r,...newRecs.filter(n=>!r.some(e=>e.savedAt===n.savedAt))])}/>;
-  if (screen === "report") return <MonthlyReportScreen onBack={()=>setScreen("home")} onHome={goHome} invoices={invoices} onSaveReport={(r)=>{
+  if (screen === "report") return <MonthlyReportScreen onBack={()=>setScreen("home")} onHome={goHome} invoices={invoices.filter(inv => (inv.company || "wlg") === company)} onSaveReport={(r)=>{
     const newMonthlyReports = [r, ...accountReports];
     setAccountReports(newMonthlyReports);
     // Rebuild yearly report for the year this report belongs to
