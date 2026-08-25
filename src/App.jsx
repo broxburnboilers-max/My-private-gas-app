@@ -6440,7 +6440,7 @@ function ImportedGasCheckerScreen({ onBack, onHome }) {
         </button>
       </div>
       <div style={{ padding:"12px 16px 0" }}>
-        <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search by reference…"
+        <input value={query} onChange={e=>setQuery(e.target.value)} placeholder={tab==="safety" ? "Search by installation address…" : "Search by client address…"}
           style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1px solid #ddd", fontSize:14, boxSizing:"border-box" }}/>
       </div>
       <div style={{ flex:1, overflowY:"auto", padding:16 }}>
@@ -6451,6 +6451,7 @@ function ImportedGasCheckerScreen({ onBack, onHome }) {
           <a key={i} href={c.url} target="_blank" rel="noopener noreferrer"
             style={{ display:"flex", alignItems:"center", gap:12, background:"#fff", borderRadius:10, padding:"14px 16px", marginBottom:10, boxShadow:"0 2px 8px rgba(0,0,0,0.06)", borderLeft:`4px solid ${IMPORT_COLOR}`, textDecoration:"none" }}>
             <div style={{ flex:1 }}>
+              <div style={{ fontSize:11, color:IMPORT_COLOR, fontWeight:700, textTransform:"uppercase", letterSpacing:0.3, marginBottom:2 }}>{tab==="safety" ? "Installation Address" : "Client Address"}</div>
               <div style={{ fontWeight:700, fontSize:15, color:"#222" }}>{c.reference}</div>
               <div style={{ fontSize:12, color:"#888", marginTop:3 }}>{c.category} · {c.date}</div>
             </div>
