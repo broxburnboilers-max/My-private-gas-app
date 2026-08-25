@@ -6402,6 +6402,67 @@ function SearchCertsScreen({ records, onBack, onHome, onRenew }) {
   );
 }
 
+// ─── Imported Certs from Gas Checker (external archive, separate from live records) ─
+// These are certificates imported from the old GasChecker.co.uk account. They are
+// static PDFs shipped with the app build (public/imported-certs-from-gas-checker/)
+// plus a manifest.json listing them, split into Gas Safety and Boiler Service. They
+// are intentionally kept OUT of the normal `records` array/sync so they never affect
+// reminders/due-date automation - this is a read-only archive you can browse and open.
+function ImportedGasCheckerScreen({ onBack, onHome }) {
+  const [manifest, setManifest] = useState(null);
+  const [tab, setTab] = useState("safety");
+  const [query, setQuery] = useState("");
+  const [error, setError] = useState(null);
+  const IMPORT_COLOR = "#0a8a5c";
+
+  useEffect(() => {
+    fetch("/imported-certs-from-gas-checker/manifest.json")
+      .then(r => { if (!r.ok) throw new Error("bad response"); return r.json(); })
+      .then(setManifest)
+      .catch(() => setError("Could not load the imported certificates list."));
+  }, []);
+
+  const list = manifest ? (tab === "safety" ? manifest.gasSafety : manifest.boilerService) : [];
+  const q = query.trim().toLowerCase();
+  const filtered = q ? list.filter(c => (c.reference || "").toLowerCase().includes(q)) : list;
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:LIGHT_BG, fontFamily:"'Segoe UI',sans-serif" }}>
+      <Header title="📥 Imported Certs (Gas Checker)" onBack={onBack}/>
+      <div style={{ display:"flex", gap:8, padding:"12px 16px 0" }}>
+        <button onClick={()=>setTab("safety")}
+          style={{ flex:1, padding:"10px", borderRadius:10, border:`2px solid ${IMPORT_COLOR}`, background: tab==="safety"?IMPORT_COLOR:"#fff", color: tab==="safety"?"#fff":IMPORT_COLOR, fontWeight:700, fontSize:13, cursor:"pointer" }}>
+          Gas Safety{manifest ? ` (${manifest.gasSafety.length})` : ""}
+        </button>
+        <button onClick={()=>setTab("service")}
+          style={{ flex:1, padding:"10px", borderRadius:10, border:`2px solid ${IMPORT_COLOR}`, background: tab==="service"?IMPORT_COLOR:"#fff", color: tab==="service"?"#fff":IMPORT_COLOR, fontWeight:700, fontSize:13, cursor:"pointer" }}>
+          Boiler Service{manifest ? ` (${manifest.boilerService.length})` : ""}
+        </button>
+      </div>
+      <div style={{ padding:"12px 16px 0" }}>
+        <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search by reference…"
+          style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1px solid #ddd", fontSize:14, boxSizing:"border-box" }}/>
+      </div>
+      <div style={{ flex:1, overflowY:"auto", padding:16 }}>
+        {error && <div style={{ textAlign:"center", color:"#c00", marginTop:40, fontSize:14 }}>{error}</div>}
+        {!error && !manifest && <div style={{ textAlign:"center", color:"#aaa", marginTop:40, fontSize:14 }}>Loading…</div>}
+        {!error && manifest && filtered.length===0 && <div style={{ textAlign:"center", color:"#aaa", marginTop:40, fontSize:14 }}>No certificates found</div>}
+        {!error && manifest && filtered.map((c,i)=>(
+          <a key={i} href={c.url} target="_blank" rel="noopener noreferrer"
+            style={{ display:"flex", alignItems:"center", gap:12, background:"#fff", borderRadius:10, padding:"14px 16px", marginBottom:10, boxShadow:"0 2px 8px rgba(0,0,0,0.06)", borderLeft:`4px solid ${IMPORT_COLOR}`, textDecoration:"none" }}>
+            <div style={{ flex:1 }}>
+              <div style={{ fontWeight:700, fontSize:15, color:"#222" }}>{c.reference}</div>
+              <div style={{ fontSize:12, color:"#888", marginTop:3 }}>{c.category} · {c.date}</div>
+            </div>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M5 7l3 3 3-3M2 12h12" stroke={IMPORT_COLOR} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </a>
+        ))}
+      </div>
+      <BottomBar onHome={onHome}/>
+    </div>
+  );
+}
+
 function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, onEditGi, onEditBs, onEditBmk, invoices, onCreateInvoice, onDeleteInvoice, onMarkPaid, quotes, onDeleteQuote, onConvertQuoteToInvoice, onImportInvoices, onImportQuotes, onImportReports, onImportFolders, engineerData, accountReports, onDeleteReport, yearlyReports, onDeleteYearly, onRebuildYearly, onUpdateReport, gscFolders, onAddFolder, onRenameFolder, onDeleteFolder, onUpdateRecord, onEditInvoice, onEditQuote, company }) {
   const [folder, setFolder] = useState(null);
 
@@ -6415,6 +6476,7 @@ function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, 
   if (folder === "inv") return <InvoicesScreen invoices={invoices} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDeleteInvoice} onMarkPaid={onMarkPaid} onImport={onCreateInvoice} onEdit={onEditInvoice} company={company}/>;
   if (folder === "quotes") return <QuotesScreen quotes={quotes||[]} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDeleteQuote} onConvertToInvoice={(i)=>onConvertQuoteToInvoice(i)} onEdit={onEditQuote} company={company}/>;
   if (folder === "reports") return <AccountReportsScreen reports={accountReports||[]} onBack={()=>setFolder(null)} onHome={onHome} onDelete={(i)=>{ if(onDeleteReport) onDeleteReport(i); }} yearlyReports={yearlyReports||[]} onDeleteYearly={(i)=>{ if(onDeleteYearly) onDeleteYearly(i); }} onRebuildYearly={onRebuildYearly} onUpdateReport={onUpdateReport}/>;
+  if (folder === "importedGasChecker") return <ImportedGasCheckerScreen onBack={()=>setFolder(null)} onHome={onHome}/>;
 
   const exportRecords = () => {
     // NOTE: invoices and quotes are intentionally excluded from this backup/
@@ -6515,6 +6577,7 @@ function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, 
     { id:"inv", label:"Invoices", icon:"💰", count: invCount, color: INV_GREEN_DARK },
     { id:"quotes", label:"Quotes", icon:"📝", count: quoteCount, color: BLUE },
     { id:"reports", label:"Account Reports", icon:"📊", count: reportCount, color: "#7c3aed" },
+    { id:"importedGasChecker", label:"Imported Certs from Gas Checker", icon:"📥", count: null, color: "#0a8a5c", desc: "Archive from GasChecker.co.uk" },
   ];
 
   return (
