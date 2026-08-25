@@ -4524,10 +4524,14 @@ function QuotePDFPreview({ quoteData: q, onClose, onSave }) {
 }
 
 // ─── Quotes Folder Screen ─────────────────────────────────────────────────────
-function QuotesScreen({ quotes, onBack, onHome, onDelete, onConvertToInvoice, onEdit }) {
+function QuotesScreen({ quotes, onBack, onHome, onDelete, onConvertToInvoice, onEdit, company }) {
   const [selected, setSelected] = useState(null);
   const [viewing, setViewing] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
+
+  const visibleQuotes = quotes
+    .map((q, i) => ({ ...q, _origIdx: i }))
+    .filter(q => (q.company || "wlg") === (company || "wlg"));
 
   if (viewing !== null) {
     const q = quotes[viewing];
@@ -4538,10 +4542,10 @@ function QuotesScreen({ quotes, onBack, onHome, onDelete, onConvertToInvoice, on
     <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:LIGHT_BG, fontFamily:"'Segoe UI',sans-serif" }}>
       <Header title="Quotes" onBack={onBack}/>
       <div style={{ flex:1, overflowY:"auto", padding:16 }}>
-        {quotes.length===0 ? (
+        {visibleQuotes.length===0 ? (
           <div style={{ textAlign:"center", color:"#aaa", marginTop:60, fontSize:15 }}>No quotes yet</div>
-        ) : quotes.map((q,i)=>(
-          <div key={i} onClick={()=>setSelected(i)}
+        ) : visibleQuotes.map((q)=>(
+          <div key={q._origIdx} onClick={()=>setSelected(q._origIdx)}
             style={{ background:"#fff", borderRadius:10, padding:"14px 16px", marginBottom:10, boxShadow:"0 2px 8px rgba(0,0,0,0.06)", borderLeft:`4px solid ${BLUE}`, cursor:"pointer" }}>
             <div style={{ fontWeight:700, fontSize:15, color:"#222" }}>{q.quoteNo}</div>
             <div style={{ fontSize:13, color:"#888", marginTop:3 }}>{q.clientName} · {q.instAddr1||q.clientAddr1}</div>
@@ -6409,7 +6413,7 @@ function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, 
   if (folder === "bmk") return <BenchmarkRecordsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete} onEdit={onEditBmk} onCreateInvoice={onCreateInvoice}/>;
   if (folder === "wn") return <WarningNoticeRecordsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete}/>;
   if (folder === "inv") return <InvoicesScreen invoices={invoices} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDeleteInvoice} onMarkPaid={onMarkPaid} onImport={onCreateInvoice} onEdit={onEditInvoice} company={company}/>;
-  if (folder === "quotes") return <QuotesScreen quotes={quotes||[]} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDeleteQuote} onConvertToInvoice={(i)=>onConvertQuoteToInvoice(i)} onEdit={onEditQuote}/>;
+  if (folder === "quotes") return <QuotesScreen quotes={quotes||[]} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDeleteQuote} onConvertToInvoice={(i)=>onConvertQuoteToInvoice(i)} onEdit={onEditQuote} company={company}/>;
   if (folder === "reports") return <AccountReportsScreen reports={accountReports||[]} onBack={()=>setFolder(null)} onHome={onHome} onDelete={(i)=>{ if(onDeleteReport) onDeleteReport(i); }} yearlyReports={yearlyReports||[]} onDeleteYearly={(i)=>{ if(onDeleteYearly) onDeleteYearly(i); }} onRebuildYearly={onRebuildYearly} onUpdateReport={onUpdateReport}/>;
 
   const exportRecords = () => {
@@ -9593,9 +9597,9 @@ function App() {
   // change `screen` itself. If a screen-based branch were checked first, it
   // would keep matching and the overlay would never render.
   if (invoiceWizardOpen) return <InvoiceWizard sourceRecord={null} onSave={(invData)=>{ setInvoices(prev=>[...prev, {...invData, company}]); alert("✅ Invoice saved to Invoices folder!"); setInvoiceWizardOpen(false); goHome(); }} onClose={()=>{ setInvoiceWizardOpen(false); setScreen("newJob"); }} invoiceRecords={invoices}/>;
-  if (quoteWizardOpen) return <QuoteWizard sourceRecord={null} onSave={(qData)=>{ setQuotes(prev=>[...prev,qData]); alert("✅ Quote saved to Quotes folder!"); setQuoteWizardOpen(false); goHome(); }} onClose={()=>{ setQuoteWizardOpen(false); setScreen("newJob"); }}/>;
+  if (quoteWizardOpen) return <QuoteWizard sourceRecord={null} onSave={(qData)=>{ setQuotes(prev=>[...prev,{...qData, company}]); alert("✅ Quote saved to Quotes folder!"); setQuoteWizardOpen(false); goHome(); }} onClose={()=>{ setQuoteWizardOpen(false); setScreen("newJob"); }}/>;
   if (editingInvoiceIndex !== null) return <InvoiceWizard sourceRecord={null} prefillData={invoices[editingInvoiceIndex]} isEditing={true} onSave={(invData)=>{ setInvoices(prev=>prev.map((inv,idx)=>idx===editingInvoiceIndex?{...invData, company: inv.company}:inv)); setEditingInvoiceIndex(null); alert("✅ Invoice updated!"); }} onClose={()=>setEditingInvoiceIndex(null)} invoiceRecords={invoices}/>;
-  if (editingQuoteIndex !== null) return <QuoteWizard sourceRecord={null} prefillData={quotes[editingQuoteIndex]} isEditing={true} onSave={(qData)=>{ setQuotes(prev=>prev.map((q,idx)=>idx===editingQuoteIndex?qData:q)); setEditingQuoteIndex(null); alert("✅ Quote updated!"); }} onClose={()=>setEditingQuoteIndex(null)}/>;
+  if (editingQuoteIndex !== null) return <QuoteWizard sourceRecord={null} prefillData={quotes[editingQuoteIndex]} isEditing={true} onSave={(qData)=>{ setQuotes(prev=>prev.map((q,idx)=>idx===editingQuoteIndex?{...qData, company:q.company}:q)); setEditingQuoteIndex(null); alert("✅ Quote updated!"); }} onClose={()=>setEditingQuoteIndex(null)}/>;
   if (quoteToInvoiceDraft !== null) return <InvoiceWizard sourceRecord={null} prefillData={quoteToInvoiceDraft} isEditing={false} onSave={(invData)=>{ setInvoices(prev=>[...prev, {...invData, company}]); setQuoteToInvoiceDraft(null); alert("✅ Invoice created from quote!"); }} onClose={()=>setQuoteToInvoiceDraft(null)} invoiceRecords={invoices}/>;
 
   if (screen === "searchCerts") return <SearchCertsScreen records={records} onBack={()=>setScreen("home")} onHome={goHome} onRenew={renewCertRecord}/>;
