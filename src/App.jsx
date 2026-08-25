@@ -9,6 +9,52 @@ if (typeof document !== "undefined") {
 }
 const SIG_STYLE = { fontFamily:"'Ms Madi', cursive", fontWeight:"bold", fontSize:13, color:"#1a1a2e", letterSpacing:1 };
 
+// ── Multi-company login profiles ───────────────────────────────────────────────
+// Two engineers can use this app, each trading under their own company. Whichever
+// company is picked at login becomes the "active company" (persisted in
+// localStorage so it survives refreshes) and its details automatically populate
+// the Engineer Details / Report Issued By section of every certificate that
+// engineer produces from then on, until someone switches company at login again.
+const COMPANY_PROFILES = {
+  wlg: {
+    key: "wlg",
+    label: "West Lothian Gas",
+    companyName: "West Lothian Gas Ltd",
+    companyAddr: "18 Mauldeth Rd Broxburn",
+    companyPostcode: "EH52 6FB",
+    companyTel: "07961768920",
+    companyEmail: "akingpage@gmail.com",
+    companyWeb: "www.westlothiangas.com",
+    gasSafeNo: "927997",
+    engineerName: "Andrew King-Page",
+    gasId: "5927846",
+  },
+  cps: {
+    key: "cps",
+    label: "Coventry Plumbing Services",
+    companyName: "Coventry Plumbing Services Ltd",
+    companyAddr: "27 Amber Grove, Coventry",
+    companyPostcode: "CV2 5LZ",
+    companyTel: "07385 732137",
+    companyEmail: "",
+    companyWeb: "",
+    gasSafeNo: "982637",
+    engineerName: "Darcey Holder-Smith",
+    gasId: "982637",
+  },
+};
+function getActiveCompany() {
+  try { return localStorage.getItem("gsc_active_company") || "wlg"; } catch(e) { return "wlg"; }
+}
+function companyProfile(key) { return COMPANY_PROFILES[key] || COMPANY_PROFILES.wlg; }
+// West Lothian keeps the original, un-namespaced signature key so nothing already
+// saved for that engineer is lost; any other company gets its own key so their
+// saved signatures never mix.
+function sigStorageKey() {
+  const c = getActiveCompany();
+  return c === "wlg" ? "gsc_engineer_sig" : ("gsc_engineer_sig_" + c);
+}
+
 // v2 - Google Contacts integration
 const BLUE = "#2a52d4";
 const DARK_BLUE = "#1a3bbf";
@@ -35,10 +81,13 @@ function defaultServiceData() {
   return { certRef:"", clientName:"", clientAddr1:"", clientAddr2:"", clientAddr3:"", clientPostcode:"", clientTel:"", clientEmail:"", instName:"", instAddr1:"", instAddr2:"", instAddr3:"", instPostcode:"", instTel:"", typeOfWorkService:"N/A", typeOfWorkBreakdown:"N/A", boilerMake:"", boilerModel:"", boilerSerial:"", applianceMake:"", applianceModel:"", applianceSerial:"", coReading:"", co2Reading:"", flueType:"N/A", ventilationSize:"N/A", waterFuelSound:"N/A", electricallyFused:"N/A", correctValving:"N/A", isolationAvailable:"N/A", boilerPlantroom:"N/A", heatExchanger:"N/A", ignition:"N/A", gasValve:"N/A", fan:"N/A", safetyDevice:"N/A", controlBox:"N/A", burnersAndPilot:"N/A", fuelPressure:"N/A", burnerWashed:"N/A", pilotAssembly:"N/A", ignitionSystem:"N/A", burnerFan:"N/A", heatExchangerFlueways:"N/A", fuelElectrical:"N/A", additionalNotes:"", sparesRequired:"", coCo2Ratio:"", dataProtection:false, customerDeclaration:"" };
 }
 function defaultGwData() {
-  return { project:"", date:todayISO(), address:"", workType:"Kitchen Refurb", visit1Date:todayISO(), visit2Date:todayISO(), enablingNotes:"", signerName:"Andrew King-Page", appliances:[], meterBoxLocation:null, applianceLocations:{} };
+  const p = companyProfile(getActiveCompany());
+  return { project:"", date:todayISO(), address:"", workType:"Kitchen Refurb", visit1Date:todayISO(), visit2Date:todayISO(), enablingNotes:"", signerName:p.engineerName, appliances:[], meterBoxLocation:null, applianceLocations:{} };
 }
 function defaultGiData() {
-  return { contractName:"", contactNo:"", date:todayISO(), time:"", gasEngineerName:"Andrew King-Page", subcontractorName:"", propertyName:"", gasSafeNo:"927997", scopeOfWorks:"", scopingSurveyCompleted:"Yes", locationOfWork:"", appliancesToIsolate:"", appliancesIsolated:"", gasCertType:"Gas safety certificate", gasCertNo:"", precautions:"", hazardsAware:"Yes", hazardsDetail:"RIAMS have been read\nCheck all works and any near appliances", certIssuedHow:"", contractorName:"Andrew King-Page and D S Plumbing Solutions", activityType:"", coDetectors:"", permitReceiverName:"", permitReceiverDatetime:"", appliancesMadeLive:"", engineerName:"Andrew King-Page", closeCertType:"Gas Safety Certificate", closeCertNo:"", gasCertIssuedHow:"Email", closeOutPermitName:"", closeOutDatetime:"", permitIssuerName:"Wates", permitIssuerDatetime:"", permitReceiverName2:"Alect", permitReceiverDatetime2:"", engineerSignDatetime:"", watesSiteManager:"Dean Tanner", watesSignDatetime:"", engineerSigImage:null };
+  const p = companyProfile(getActiveCompany());
+  const contractorName = p.key==="wlg" ? (p.engineerName+" and D S Plumbing Solutions") : p.engineerName;
+  return { contractName:"", contactNo:"", date:todayISO(), time:"", gasEngineerName:p.engineerName, subcontractorName:"", propertyName:"", gasSafeNo:p.gasSafeNo, scopeOfWorks:"", scopingSurveyCompleted:"Yes", locationOfWork:"", appliancesToIsolate:"", appliancesIsolated:"", gasCertType:"Gas safety certificate", gasCertNo:"", precautions:"", hazardsAware:"Yes", hazardsDetail:"RIAMS have been read\nCheck all works and any near appliances", certIssuedHow:"", contractorName, activityType:"", coDetectors:"", permitReceiverName:"", permitReceiverDatetime:"", appliancesMadeLive:"", engineerName:p.engineerName, closeCertType:"Gas Safety Certificate", closeCertNo:"", gasCertIssuedHow:"Email", closeOutPermitName:"", closeOutDatetime:"", permitIssuerName:"Wates", permitIssuerDatetime:"", permitReceiverName2:"Alect", permitReceiverDatetime2:"", engineerSignDatetime:"", watesSiteManager:"Dean Tanner", watesSignDatetime:"", engineerSigImage:null };
 }
 function defaultBmkData() {
   return {
@@ -266,26 +315,43 @@ function CalendarModal({ value, onChange, onClose }) {
 
 // 1. Login
 function LoginScreen({ onUnlock }) {
+  const [company, setCompany] = useState(() => getActiveCompany());
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [error, setError] = useState("");
+  const profile = companyProfile(company);
+  const doUnlock = () => password ? onUnlock(company) : setError("Please enter your password.");
+  const CompanyCard = ({ ck }) => {
+    const p = companyProfile(ck);
+    const active = company === ck;
+    return (
+      <button onClick={()=>setCompany(ck)} style={{ flex:1, textAlign:"left", cursor:"pointer", padding:"12px 14px", borderRadius:12, border:`2px solid ${active?BLUE:"#ddd"}`, background:active?"#eef1fd":"#fff", fontFamily:"inherit" }}>
+        <div style={{ fontSize:14, fontWeight:700, color:active?DARK_BLUE:"#333" }}>{p.label}</div>
+        <div style={{ fontSize:11, color:"#777", marginTop:2 }}>{p.engineerName}</div>
+      </button>
+    );
+  };
   return (
     <div style={{ minHeight:"100vh", background:`linear-gradient(160deg,${DARK_BLUE} 0%,${BLUE} 60%,${DARK_BLUE} 100%)`, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", fontFamily:"'Segoe UI',sans-serif", padding:24 }}>
       <div style={{ background:"#fff", borderRadius:24, padding:"40px 32px 36px", width:"100%", maxWidth:380, boxShadow:"0 20px 60px rgba(0,0,0,0.25)", display:"flex", flexDirection:"column", alignItems:"center" }}>
         <div style={{ fontSize:56, lineHeight:1, marginBottom:12 }}>🔥</div>
         <h1 style={{ fontSize:24, fontWeight:800, color:"#111", margin:"0 0 6px" }}>Gas Safety</h1>
-        <p style={{ color:"#666", fontSize:15, margin:"0 0 2px" }}>West Lothian Gas Ltd</p>
-        <p style={{ color:"#666", fontSize:15, margin:"0 0 28px" }}>Enter your password to continue</p>
+        <p style={{ color:"#666", fontSize:15, margin:"0 0 2px" }}>{profile.companyName}</p>
+        <p style={{ color:"#666", fontSize:15, margin:"0 0 18px" }}>Enter your password to continue</p>
+        <div style={{ display:"flex", gap:10, width:"100%", marginBottom:20 }}>
+          <CompanyCard ck="wlg"/>
+          <CompanyCard ck="cps"/>
+        </div>
         <div style={{ position:"relative", width:"100%", marginBottom:16 }}>
-          <input type={show?"text":"password"} placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&(password?onUnlock():setError("Please enter your password."))}
+          <input type={show?"text":"password"} placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doUnlock()}
             style={{ width:"100%", padding:"16px 50px 16px 18px", borderRadius:12, border:`2px solid ${BLUE}`, fontSize:16, color:"#111", outline:"none", boxSizing:"border-box", fontFamily:"inherit" }}/>
           <button onClick={()=>setShow(v=>!v)} style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", cursor:"pointer", fontSize:20, color:"#888", padding:0 }}>{show?"🙈":"👁️"}</button>
         </div>
         {error && <p style={{ color:"#d32f2f", fontSize:13, margin:"-8px 0 12px", alignSelf:"flex-start" }}>{error}</p>}
-        <button onClick={()=>password?onUnlock():setError("Please enter your password.")}
+        <button onClick={doUnlock}
           style={{ width:"100%", padding:17, background:BLUE, color:"#fff", border:"none", borderRadius:12, fontSize:17, fontWeight:700, cursor:"pointer" }}>Unlock App</button>
       </div>
-      <p style={{ color:"rgba(255,255,255,0.65)", fontSize:13, marginTop:28, textAlign:"center" }}>West Lothian Gas Ltd · Gas Safe Reg. 5927846</p>
+      <p style={{ color:"rgba(255,255,255,0.65)", fontSize:13, marginTop:28, textAlign:"center" }}>{profile.companyName} · Gas Safe Reg. {profile.gasId}</p>
     </div>
   );
 }
@@ -1576,7 +1642,8 @@ function MonthlyReportScreen({ onBack, onHome, invoices, onSaveReport }) {
 }
 
 
-function HomeScreen({ onNew, onRecords, onSearch, onEmail, onGiEmail, onGwEmail, onGscEmail, onBsEmail, onReport }) {
+function HomeScreen({ onNew, onRecords, onSearch, onEmail, onGiEmail, onGwEmail, onGscEmail, onBsEmail, onReport, company, onLogout }) {
+  const profile = companyProfile(company || getActiveCompany());
   function CircleBtn({ onClick, label, children }) {
     const [hov, setHov] = useState(false);
     return (
@@ -1588,9 +1655,12 @@ function HomeScreen({ onNew, onRecords, onSearch, onEmail, onGiEmail, onGwEmail,
   }
   return (
     <div style={{ minHeight:"100vh", background:`linear-gradient(160deg,${DARK_BLUE} 0%,${BLUE} 60%,${DARK_BLUE} 100%)`, display:"flex", flexDirection:"column", fontFamily:"'Segoe UI',sans-serif" }}>
-      <div style={{ padding:"28px 24px 20px", display:"flex", alignItems:"center", gap:12 }}>
-        <span style={{ fontSize:28 }}>🔥</span>
-        <div><div style={{ color:"#fff", fontWeight:800, fontSize:18 }}>Gas Safety</div><div style={{ color:"rgba(255,255,255,0.7)", fontSize:12 }}>West Lothian Gas Ltd</div></div>
+      <div style={{ padding:"28px 24px 20px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:12 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+          <span style={{ fontSize:28 }}>🔥</span>
+          <div><div style={{ color:"#fff", fontWeight:800, fontSize:18 }}>Gas Safety</div><div style={{ color:"rgba(255,255,255,0.7)", fontSize:12 }}>{profile.companyName}</div></div>
+        </div>
+        {onLogout && <button onClick={onLogout} style={{ background:"rgba(255,255,255,0.15)", color:"#fff", border:"1px solid rgba(255,255,255,0.4)", borderRadius:8, padding:"7px 12px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>Switch Engineer</button>}
       </div>
       <div style={{ flex:1, margin:"0 20px 20px", background:"#fff", borderRadius:24, boxShadow:"0 20px 60px rgba(0,0,0,0.25)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"48px 32px" }}>
         <p style={{ color:"#666", fontSize:15, marginBottom:36, textAlign:"center" }}>What would you like to do?</p>
@@ -1624,7 +1694,7 @@ function HomeScreen({ onNew, onRecords, onSearch, onEmail, onGiEmail, onGwEmail,
           </CircleBtn>
         </div>
       </div>
-      <p style={{ color:"rgba(255,255,255,0.65)", fontSize:13, textAlign:"center", paddingBottom:24 }}>West Lothian Gas Ltd · Gas Safe Reg. 5927846</p>
+      <p style={{ color:"rgba(255,255,255,0.65)", fontSize:13, textAlign:"center", paddingBottom:24 }}>{profile.companyName} · Gas Safe Reg. {profile.gasId}</p>
     </div>
   );
 }
@@ -1666,7 +1736,7 @@ function NewJobScreen({ onSelect, onBack, onHome }) {
         <p style={{ color:"#888", fontSize:14, marginBottom:16, textAlign:"center" }}>Choose a job type to continue</p>
         {JOB_TYPES.map(j => <JobRow key={j.label} icon={j.icon} label={j.label} onClick={()=>onSelect(j.label)}/>)}
       </div>
-      <p style={{ color:"rgba(255,255,255,0.65)", fontSize:13, textAlign:"center", paddingBottom:24 }}>West Lothian Gas Ltd · Gas Safe Reg. 5927846</p>
+      <p style={{ color:"rgba(255,255,255,0.65)", fontSize:13, textAlign:"center", paddingBottom:24 }}>{companyProfile(getActiveCompany()).companyName} · Gas Safe Reg. {companyProfile(getActiveCompany()).gasId}</p>
     </div>
   );
 }
@@ -1784,7 +1854,7 @@ function GasWorksEmailScreen({ onBack, onHome, onImport }) {
 
   function doImport() {
     const now = new Date();
-    const savedSig = (() => { try { return localStorage.getItem("gsc_engineer_sig") || null; } catch(e) { return null; } })();
+    const savedSig = (() => { try { return localStorage.getItem(sigStorageKey()) || null; } catch(e) { return null; } })();
     const newRecords = parsed.map((p, i) => {
       const today = new Date().toISOString().slice(0,10);
       // Parse "Appliance-Location" entries e.g. "Boiler-Airing Cupboard, Cooker-Kitchen"
@@ -1959,7 +2029,7 @@ function GwSignaturePad({ onSign }) {
     setTimeout(()=>{
       if(canvasRef.current) {
         const dataUrl = canvasRef.current.toDataURL("image/png");
-        try { localStorage.setItem("gsc_engineer_sig", dataUrl); } catch(e) {}
+        try { localStorage.setItem(sigStorageKey(), dataUrl); } catch(e) {}
         onSign(dataUrl);
       }
     }, 50);
@@ -2135,7 +2205,7 @@ function GasWorksPDFPreview({ form, onClose, autoDownload, onDownloadDone }) {
   };
 
   // Signature: always read fresh from localStorage at render time
-  const sigImage = form.sigImage || (() => { try { return localStorage.getItem("gsc_engineer_sig") || ""; } catch(e) { return ""; } })();
+  const sigImage = form.sigImage || (() => { try { return localStorage.getItem(sigStorageKey()) || ""; } catch(e) { return ""; } })();
 
   const downloadPDF = async () => {
     setDownloading(true);
@@ -2307,10 +2377,10 @@ function GasWorksPDFPreview({ form, onClose, autoDownload, onDownloadDone }) {
               <tr>
                 <td style={{ border:"1px solid #999", padding:"6px 10px", fontWeight:700, width:"15%", background:"#f0f0f0", verticalAlign:"middle" }}>Signature</td>
                 <td style={{ border:"1px solid #999", padding:"4px 8px", width:"35%", height:70, verticalAlign:"middle" }}>
-                  <span style={SIG_STYLE}>Andrew King-Page</span>
+                  <span style={SIG_STYLE}>{form.signerName||""}</span>
                 </td>
                 <td style={{ border:"1px solid #999", padding:"6px 10px", fontWeight:700, width:"15%", background:"#f0f0f0", verticalAlign:"middle" }}>Print Name</td>
-                <td style={{ border:"1px solid #999", padding:"6px 10px", verticalAlign:"middle" }}>Andrew King-Page</td>
+                <td style={{ border:"1px solid #999", padding:"6px 10px", verticalAlign:"middle" }}>{form.signerName||""}</td>
               </tr>
             </tbody>
           </table>
@@ -2735,7 +2805,7 @@ function StepSignature({ data, onChange, onNext, onBack, onHome }) {
       if (canvasRef.current) {
         const dataUrl = canvasRef.current.toDataURL("image/png");
         onChange({...data, engineerSigImage: dataUrl});
-        try { localStorage.setItem("gsc_engineer_sig", dataUrl); } catch(e) {}
+        try { localStorage.setItem(sigStorageKey(), dataUrl); } catch(e) {}
       }
     }, 50);
   };
@@ -3287,7 +3357,7 @@ function PDFPreview({ certData, appliances, faults, finalChecks, signatureData, 
                   <span style={{ flex:1, borderBottom:"1px solid #999" }}>{engineerData.engineerName||""}</span>
                   <span style={{ minWidth:32, marginLeft:8 }}>Signed:</span>
                   <span style={{ flex:1, borderBottom:"1px solid #999", minHeight:16 }}>
-                    <span style={SIG_STYLE}>Andrew King-Page</span>
+                    <span style={SIG_STYLE}>{engineerData.engineerName||""}</span>
                   </span>
                   <span style={{ minWidth:26, marginLeft:8 }}>Date:</span>
                   <span style={{ border:"1px solid #999", padding:"1px 4px", minWidth:72, fontSize:8 }}>{fmtShort(certDate)}</span>
@@ -3316,7 +3386,7 @@ function PDFPreview({ certData, appliances, faults, finalChecks, signatureData, 
 
         {/* Footer */}
         <div style={{ textAlign:"center", fontSize:7, color:"#555", marginTop:6, borderTop:"1px solid #ccc", paddingTop:4 }}>
-          This Gas Safety Report was produced by {engineerData.companyName||"West Lothian Gas Ltd"} | Gas Safe Reg: {engineerData.gasSafeNo||""} | Tel: {engineerData.companyTel||""} | www.westlothiangas.com<br/>
+          This Gas Safety Report was produced by {engineerData.companyName||"West Lothian Gas Ltd"} | Gas Safe Reg: {engineerData.gasSafeNo||""} | Tel: {engineerData.companyTel||""}{engineerData.companyWeb?" | "+engineerData.companyWeb:""}<br/>
           For appliances not owned by the Landlord the recorded 'Appliance Safe' response is based on a visual check for obvious defects only.
         </div>
       </div>
@@ -6930,7 +7000,7 @@ function GasSafetyCertEmailScreen({ onBack, onHome, onImport, defaultEngineerDat
           return d; 
         })(),
       },
-      signatureData: (()=>{ try { const sig=localStorage.getItem("gsc_engineer_sig"); return sig ? {engineerSigImage: sig} : {}; } catch(e){return {};} })(),
+      signatureData: (()=>{ try { const sig=localStorage.getItem(sigStorageKey()); return sig ? {engineerSigImage: sig} : {}; } catch(e){return {};} })(),
       engineerData: { ...defaultEngineerData, certDate: (() => { if (cert.date) { const iso = normaliseDate(cert.date); const d = new Date(iso); return isNaN(d.getTime()) ? now : d; } return now; })() },
       savedAt: new Date(now.getTime() + i * 1000).toISOString(),
     }));
@@ -7200,7 +7270,7 @@ function BoilerServiceEmailScreen({ onBack, onHome, onImport, defaultEngData }) 
 
   function doImport() {
     const now = new Date();
-    const savedSig = (() => { try { return localStorage.getItem("gsc_engineer_sig") || null; } catch(e) { return null; } })();
+    const savedSig = (() => { try { return localStorage.getItem(sigStorageKey()) || null; } catch(e) { return null; } })();
     const defaultChecks = { flueType:"N/A", ventilationSize:"N/A", waterFuelSound:"N/A", electricallyFused:"N/A", correctValving:"N/A", isolationAvailable:"N/A", boilerPlantroom:"N/A", heatExchanger:"N/A", ignition:"N/A", gasValve:"N/A", fan:"N/A", safetyDevice:"N/A", controlBox:"N/A", burnersAndPilot:"N/A", fuelPressure:"N/A", burnerWashed:"N/A", pilotAssembly:"N/A", ignitionSystem:"N/A", burnerFan:"N/A", heatExchangerFlueways:"N/A", fuelElectrical:"N/A" };
     const newRecords = parsed.map((p, i) => ({
       type: "bs",
@@ -7392,7 +7462,7 @@ function EmailImportScreen({ onBack, onHome, onImportCerts, defaultEngineerData 
         smokeAlarm: cert.smokeAlarm || "YES",
         inspectionDate: (() => { const d = new Date(); d.setFullYear(d.getFullYear()+1); return d; })(),
       },
-      signatureData: (()=>{ try { const sig=localStorage.getItem("gsc_engineer_sig"); return sig ? {engineerSigImage: sig} : {}; } catch(e){return {};} })(),
+      signatureData: (()=>{ try { const sig=localStorage.getItem(sigStorageKey()); return sig ? {engineerSigImage: sig} : {}; } catch(e){return {};} })(),
       engineerData: { ...defaultEngineerData, certDate: now },
       savedAt: new Date(now.getTime() + i * 1000).toISOString(),
     }));
@@ -8126,7 +8196,7 @@ function WNPDFPreview({ wnFormData, wnEngData, onClose, autoDownload, onDownload
               <div style={{ marginTop:6, display:"flex", alignItems:"center", gap:6 }}>
                 <span style={{ minWidth:36, fontSize:8 }}>Signed:</span>
                 <span style={{ flex:1, borderBottom:"1px solid #555", minHeight:22, display:"flex", alignItems:"flex-end" }}>
-                  {(()=>{ try { const s=localStorage.getItem("gsc_engineer_sig"); return s ? <img src={s} style={{ height:22, maxWidth:"100%", objectFit:"contain" }}/> : <span style={SIG_STYLE}>{eng.engineerName||""}</span>; } catch(e){ return <span style={SIG_STYLE}>{eng.engineerName||""}</span>; } })()}
+                  {(()=>{ try { const s=localStorage.getItem(sigStorageKey()); return s ? <img src={s} style={{ height:22, maxWidth:"100%", objectFit:"contain" }}/> : <span style={SIG_STYLE}>{eng.engineerName||""}</span>; } catch(e){ return <span style={SIG_STYLE}>{eng.engineerName||""}</span>; } })()}
                 </span>
                 <span style={{ minWidth:52, fontSize:8, marginLeft:8 }}>Print Name:</span>
                 <span style={{ fontWeight:700 }}>{eng.engineerName||""}</span>
@@ -8140,7 +8210,7 @@ function WNPDFPreview({ wnFormData, wnEngData, onClose, autoDownload, onDownload
 
           {/* Footer */}
           <div style={{ textAlign:"center", fontSize:7.5, color:"#666", borderTop:"1px solid #ddd", paddingTop:3 }}>
-            This Gas Warning Notice was produced by {eng.companyName||"West Lothian Gas Ltd"} · Gas Safe Reg: {eng.gasId||""} · Tel: {eng.companyTel||""} · www.westlothiangas.com
+            This Gas Warning Notice was produced by {eng.companyName||"West Lothian Gas Ltd"} · Gas Safe Reg: {eng.gasId||""} · Tel: {eng.companyTel||""}{eng.companyWeb?" · "+eng.companyWeb:""}
           </div>
 
         </div>{/* end printable area */}
@@ -8232,7 +8302,7 @@ function BSPDFPreview({ serviceData, engineerData, signatureData, onClose, autoD
               </td>
               <td style={{ textAlign:"center", padding:"4px 8px", border:bd2, verticalAlign:"middle" }}>
                 <div style={{ fontSize:16, fontWeight:"bold", color:HEADER_BG, letterSpacing:1 }}>Gas Service/Breakdown Record</div>
-                <div style={{ fontSize:10, color:"#666", marginTop:2 }}>West Lothian Gas Ltd · Gas Safe Reg. No. {engineerData.gasSafeNo}</div>
+                <div style={{ fontSize:10, color:"#666", marginTop:2 }}>{engineerData.companyName||"West Lothian Gas Ltd"} · Gas Safe Reg. No. {engineerData.gasSafeNo}</div>
               </td>
               <td style={{ width:"18%", padding:"4px 8px", border:bd2, verticalAlign:"middle" }}>
                 <div style={{ fontSize:9, color:"#888" }}>Certificate No.</div>
@@ -8335,7 +8405,7 @@ function BSPDFPreview({ serviceData, engineerData, signatureData, onClose, autoD
                 <div style={{display:"flex",gap:16,marginTop:4}}>
                   <div>
                     <div style={{fontSize:8,color:"#888"}}>Signature</div>
-                    <span style={SIG_STYLE}>Andrew King-Page</span>
+                    <span style={SIG_STYLE}>{engineerData.engineerName||""}</span>
                   </div>
                   <div><div style={{fontSize:8,color:"#888"}}>Date</div><div style={{fontSize:10,fontWeight:"bold"}}>{todayStr}</div></div>
                 </div>
@@ -8352,7 +8422,7 @@ function BSPDFPreview({ serviceData, engineerData, signatureData, onClose, autoD
           </table>
           {/* FOOTER */}
           <div style={{fontSize:7.5,color:"#888",textAlign:"center",borderTop:"1px solid #ccc",paddingTop:3}}>
-            This gas service/breakdown record was produced by West Lothian Gas Ltd · Gas Safe Registration No. {engineerData.gasSafeNo} · {engineerData.companyAddr} {engineerData.companyPostcode} · Tel: {engineerData.companyTel}
+            This gas service/breakdown record was produced by {engineerData.companyName||"West Lothian Gas Ltd"} · Gas Safe Registration No. {engineerData.gasSafeNo} · {engineerData.companyAddr} {engineerData.companyPostcode} · Tel: {engineerData.companyTel}
           </div>
         </div>
       </div>
@@ -9273,12 +9343,13 @@ function BenchmarkPDF({ bmkData, engineerData, onClose, autoDownload, onDownload
 
 function App() {
   const [screen, setScreen] = useState("login");
+  const [company, setCompany] = useState(() => getActiveCompany());
   const [subScreen, setSubScreen] = useState(null);
   const [wnSubScreen, setWnSubScreen] = useState(null);
   const [wnShowOptions, setWnShowOptions] = useState(false);
   const [wnShowPDF, setWnShowPDF] = useState(false);
   const [wnFormData, setWnFormData] = useState({ certRef:"", clientName:"", clientAddr1:"", clientAddr2:"", clientAddr3:"", clientPostcode:"", clientTel:"", clientEmail:"", instAddr1:"", instAddr2:"", instAddr3:"", instPostcode:"", make:"", model:"", type:"", serialNo:"", installationDetails:"", locationRoom:"", idGasEscape:"NO", idDisconnected:"NA", idRefused:"NO", gasEmergencyRef:"", arReason:"", arTurnedOff:"NO", arRefused:"NO", arTurningOffNoHelp:"NO", contactName:"", contactTel:"", riddor:"NO", remedialAction:"" });
-  const [wnEngData, setWnEngData] = useState({ companyName:"West Lothian Gas Ltd", companyAddr:"18 Mauldeth Rd Broxburn", companyPostcode:"EH52 6FB", companyTel:"07961768920", gasSafeNo:"927997", engineerName:"Andrew King-Page", gasId:"5927846" });
+  const [wnEngData, setWnEngData] = useState(() => { const p = companyProfile(getActiveCompany()); return { companyName:p.companyName, companyAddr:p.companyAddr, companyPostcode:p.companyPostcode, companyTel:p.companyTel, gasSafeNo:p.gasSafeNo, engineerName:p.engineerName, gasId:p.gasId }; });
   const [editIndex, setEditIndex] = useState(null);
   const [showOptions, setShowOptions] = useState(false);
   const [showPDF, setShowPDF] = useState(false);
@@ -9405,16 +9476,19 @@ function App() {
   const [faults, setFaults] = useState([]);
   const [finalChecks, setFinalChecks] = useState({});
   const [signatureData, setSignatureData] = useState({});
-  const [engineerData, setEngineerData] = useState({
-    companyName: "West Lothian Gas Ltd",
-    companyAddr: "18 Mauldeth Rd Broxburn",
-    companyPostcode: "EH52 6FB",
-    companyTel: "07961768920",
-    companyEmail: "akingpage@gmail.com",
-    companyWeb: "www.westlothiangas.com",
-    gasSafeNo: "927997",
-    engineerName: "Andrew King-Page",
-    gasId: "5927846",
+  const [engineerData, setEngineerData] = useState(() => {
+    const p = companyProfile(getActiveCompany());
+    return {
+      companyName: p.companyName,
+      companyAddr: p.companyAddr,
+      companyPostcode: p.companyPostcode,
+      companyTel: p.companyTel,
+      companyEmail: p.companyEmail,
+      companyWeb: p.companyWeb,
+      gasSafeNo: p.gasSafeNo,
+      engineerName: p.engineerName,
+      gasId: p.gasId,
+    };
   });
 
   // Boiler Service state
@@ -9423,14 +9497,14 @@ function App() {
   const [bsShowPDF, setBsShowPDF] = useState(false);
   const [serviceData, setServiceData] = useState(defaultServiceData());
   const [bsSigData, setBsSigData] = useState({});
-  const [bsEngData, setBsEngData] = useState({ companyName:"West Lothian Gas Ltd", companyAddr:"18 Mauldeth Rd Broxburn", companyPostcode:"EH52 6FB", companyTel:"07961768920", gasSafeNo:"927997", engineerName:"Andrew King-Page", gasId:"5927846" });
+  const [bsEngData, setBsEngData] = useState(() => { const p = companyProfile(getActiveCompany()); return { companyName:p.companyName, companyAddr:p.companyAddr, companyPostcode:p.companyPostcode, companyTel:p.companyTel, gasSafeNo:p.gasSafeNo, engineerName:p.engineerName, gasId:p.gasId }; });
 
   // Benchmark Commissioning state
   const [bmkStep, setBmkStep] = useState(null);
   const [bmkShowOptions, setBmkShowOptions] = useState(false);
   const [bmkShowPDF, setBmkShowPDF] = useState(false);
   const [bmkData, setBmkData] = useState(defaultBmkData());
-  const [bmkEngData, setBmkEngData] = useState({ companyName:"West Lothian Gas Ltd", companyAddr:"18 Mauldeth Rd Broxburn", companyPostcode:"EH52 6FB", companyTel:"07961768920", gasSafeNo:"927997", engineerName:"Andrew King-Page", gasId:"5927846" });
+  const [bmkEngData, setBmkEngData] = useState(() => { const p = companyProfile(getActiveCompany()); return { companyName:p.companyName, companyAddr:p.companyAddr, companyPostcode:p.companyPostcode, companyTel:p.companyTel, gasSafeNo:p.gasSafeNo, engineerName:p.engineerName, gasId:p.gasId }; });
 
   // Gas Works state
   const [gwSubScreen, setGwSubScreen] = useState(null);
@@ -9441,6 +9515,22 @@ function App() {
   const [giData, setGiData] = useState(defaultGiData());
 
   const goHome = () => { setScreen("home"); setSubScreen(null); };
+
+  // Called when the picker+password screen unlocks the app. Persists the chosen
+  // company/engineer so it "sticks" across refreshes, then merges that company's
+  // details into every certificate type's engineer-details state so newly created
+  // certs immediately reflect the correct trading name/address/Gas Safe No/signer.
+  const handleUnlock = (companyKey) => {
+    const key = companyKey || "wlg";
+    try { localStorage.setItem("gsc_active_company", key); } catch(e) {}
+    setCompany(key);
+    const p = companyProfile(key);
+    setEngineerData(prev => ({ ...prev, companyName:p.companyName, companyAddr:p.companyAddr, companyPostcode:p.companyPostcode, companyTel:p.companyTel, companyEmail:p.companyEmail, companyWeb:p.companyWeb, gasSafeNo:p.gasSafeNo, engineerName:p.engineerName, gasId:p.gasId }));
+    setBsEngData(prev => ({ ...prev, companyName:p.companyName, companyAddr:p.companyAddr, companyPostcode:p.companyPostcode, companyTel:p.companyTel, gasSafeNo:p.gasSafeNo, engineerName:p.engineerName, gasId:p.gasId }));
+    setBmkEngData(prev => ({ ...prev, companyName:p.companyName, companyAddr:p.companyAddr, companyPostcode:p.companyPostcode, companyTel:p.companyTel, gasSafeNo:p.gasSafeNo, engineerName:p.engineerName, gasId:p.gasId }));
+    setWnEngData(prev => ({ ...prev, companyName:p.companyName, companyAddr:p.companyAddr, companyPostcode:p.companyPostcode, companyTel:p.companyTel, gasSafeNo:p.gasSafeNo, engineerName:p.engineerName, gasId:p.gasId }));
+    setScreen("home");
+  };
 
   // Load a previously saved certificate's data into the matching form as the
   // starting point for a brand-new certificate one year on. The original
@@ -9495,7 +9585,7 @@ function App() {
 
   if (showPDF) return <PDFPreview certData={certData} appliances={appliances} faults={faults} finalChecks={finalChecks} signatureData={signatureData} engineerData={engineerData} onClose={()=>setShowPDF(false)}/>;
 
-  if (screen === "login") return <LoginScreen onUnlock={()=>setScreen("home")}/>;
+  if (screen === "login") return <LoginScreen onUnlock={handleUnlock}/>;
 
   // These wizard/edit overlays must be checked before any `screen === "..."`
   // branches below (e.g. "records") because opening them (via action-sheet
@@ -9590,7 +9680,7 @@ function App() {
     onUpdateRecord={(idx, updated)=>setRecords(prev=>prev.map((r,i)=>i===idx?updated:r))}/>;
 
 
-  if (screen === "home") return <HomeScreen onNew={()=>setScreen("newJob")} onRecords={()=>setScreen("records")} onSearch={()=>setScreen("searchCerts")} onEmail={()=>setScreen("emailImport")} onGiEmail={()=>setScreen("giEmail")} onGwEmail={()=>setScreen("gwEmail")} onGscEmail={()=>setScreen("gscEmail")} onBsEmail={()=>setScreen("bsEmail")} onReport={()=>setScreen("report")}/>;
+  if (screen === "home") return <HomeScreen onNew={()=>setScreen("newJob")} onRecords={()=>setScreen("records")} onSearch={()=>setScreen("searchCerts")} onEmail={()=>setScreen("emailImport")} onGiEmail={()=>setScreen("giEmail")} onGwEmail={()=>setScreen("gwEmail")} onGscEmail={()=>setScreen("gscEmail")} onBsEmail={()=>setScreen("bsEmail")} onReport={()=>setScreen("report")} company={company} onLogout={()=>setScreen("login")}/>;
   if (screen === "emailImport") return <EmailImportScreen onBack={()=>setScreen("home")} onHome={goHome} defaultEngineerData={engineerData} onImportCerts={(newRecs)=>setRecords(r=>[...r,...newRecs.filter(n=>!r.some(e=>e.savedAt===n.savedAt))])}/>;
   if (screen === "giEmail") return <GasIsolationEmailScreen onBack={()=>setScreen("home")} onHome={goHome} onImport={(newRecs)=>setRecords(r=>[...r,...newRecs.filter(n=>!r.some(e=>e.savedAt===n.savedAt))])}/>;
   if (screen === "gwEmail") return <GasWorksEmailScreen onBack={()=>setScreen("home")} onHome={goHome} onImport={(newRecs)=>setRecords(r=>[...r,...newRecs.filter(n=>!r.some(e=>e.savedAt===n.savedAt))])}/>;
@@ -9892,7 +9982,7 @@ function GasIsolationEmailScreen({ onBack, onHome, onImport }) {
 
   function doImport() {
     const now = new Date();
-    const savedSig = (() => { try { return localStorage.getItem("gsc_engineer_sig") || null; } catch(e) { return null; } })();
+    const savedSig = (() => { try { return localStorage.getItem(sigStorageKey()) || null; } catch(e) { return null; } })();
     const giDefaults = {
       contractName:"Citizen K&B", contactNo:"IM94R", gasEngineerName:"Andrew King-Page",
       subcontractorName:"Alect", gasSafeNo:"927997", scopeOfWorks:"Kitchen refurb",
@@ -10057,7 +10147,7 @@ function GasIsolationForm({ data: initialData, onBack, onHome, onSave }) {
     engineerSignDatetime: "",
     watesSiteManager: "Dean Tanner",
     watesSignDatetime: "",
-    engineerSigImage: (() => { try { return localStorage.getItem("gsc_engineer_sig") || null; } catch(e) { return null; } })(),
+    engineerSigImage: (() => { try { return localStorage.getItem(sigStorageKey()) || null; } catch(e) { return null; } })(),
   };
   const [form, setForm] = useState({ ...defaultData, ...(initialData || {}) });
   const [showOptions, setShowOptions] = useState(false);
@@ -10214,7 +10304,7 @@ function GasIsolationPDFPreview({ form, onClose, autoDownload, onDownloadDone })
               </tr>
               <tr>
                 <td style={{ background: "#1a7a7a", color: "#fff", fontWeight: 700, padding: "5px 8px", fontSize: 11, border: "1px solid #aaa", verticalAlign: "top" }}>Name Gas Engineer:</td>
-                <td style={{ padding: "5px 8px", fontSize: 11, border: "1px solid #aaa", verticalAlign: "top", background: "#fff" }}>Andrew King-Page</td>
+                <td style={{ padding: "5px 8px", fontSize: 11, border: "1px solid #aaa", verticalAlign: "top", background: "#fff" }}>{form.gasEngineerName||""}</td>
                 <td style={{ background: "#1a7a7a", color: "#fff", fontWeight: 700, padding: "5px 8px", fontSize: 11, border: "1px solid #aaa", verticalAlign: "top" }}>Subcontractor Name:</td>
                 <td style={{ padding: "5px 8px", fontSize: 11, border: "1px solid #aaa", verticalAlign: "top", background: "#fff" }}>Alect</td>
               </tr>
@@ -10410,7 +10500,7 @@ function GasIsolationPDFPreview({ form, onClose, autoDownload, onDownloadDone })
                 <td style={{ padding: "5px 8px", fontSize: 11, border: "1px solid #aaa", verticalAlign: "top", background: "#fff", width:"50%" }}>Cooker</td>
               </tr>
               <tr>
-                <td style={{ padding: "5px 8px", fontSize: 11, border: "1px solid #aaa", verticalAlign: "top", background: "#fff", fontWeight:700 }} colSpan={2}>Andrew King-Page</td>
+                <td style={{ padding: "5px 8px", fontSize: 11, border: "1px solid #aaa", verticalAlign: "top", background: "#fff", fontWeight:700 }} colSpan={2}>{form.engineerName||""}</td>
               </tr>
               <tr>
                 <td style={{ background: "#1a7a7a", color: "#fff", fontWeight: 700, padding: "5px 8px", fontSize: 11, border: "1px solid #aaa", verticalAlign: "top", width:"20%" }}>Certificate Type:</td>
@@ -10441,9 +10531,9 @@ function GasIsolationPDFPreview({ form, onClose, autoDownload, onDownloadDone })
           <table style={{ width:"100%", borderCollapse:"collapse", marginBottom:0 }}>
             <tbody>
               <tr>
-                <td style={{ padding: "5px 8px", fontSize: 11, border: "1px solid #aaa", verticalAlign: "top", background: "#fff", width:"33%", fontWeight:700 }}>Andrew King-Page</td>
+                <td style={{ padding: "5px 8px", fontSize: 11, border: "1px solid #aaa", verticalAlign: "top", background: "#fff", width:"33%", fontWeight:700 }}>{form.engineerName||""}</td>
                 <td style={{ padding: "5px 8px", fontSize: 11, border: "1px solid #aaa", verticalAlign: "top", background: "#fff", width:"34%", textAlign:"center", height:70, verticalAlign:"middle" }}>
-                  <span style={SIG_STYLE}>Andrew King-Page</span>
+                  <span style={SIG_STYLE}>{form.engineerName||""}</span>
                 </td>
                 <td style={{ padding: "5px 8px", fontSize: 11, border: "1px solid #aaa", verticalAlign: "top", background: "#fff", color: "#000", fontWeight: 700, width:"33%" }}>{dynSignDatetime}</td>
               </tr>
