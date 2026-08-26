@@ -6198,14 +6198,11 @@ function RemindersScreen({ records, onBack, onHome, engineerData, onRenewImporte
     const isPinned = r.pinnedReminder;
 
     if (isDueSoon) {
-      autoReminders.push({ name, addr1, addr2, postcode, tel, email, dueDate, daysLeft, type, certRef });
+      autoReminders.push({ name, addr1, addr2, postcode, tel, email, dueDate, daysLeft, type, certRef, _isPinned:false });
     } else if (isPinned) {
-      pinnedReminders.push({ name, addr1, addr2, postcode, tel, email, dueDate, daysLeft, type, certRef });
+      pinnedReminders.push({ name, addr1, addr2, postcode, tel, email, dueDate, daysLeft, type, certRef, _isPinned:true });
     }
   }
-
-  autoReminders.sort((a,b) => a.dueDate - b.dueDate);
-  pinnedReminders.sort((a,b) => (a.daysLeft||9999) - (b.daysLeft||9999));
 
   const eng = engineerData || {};
   const bizName = eng.companyName || "West Lothian Gas Ltd";
@@ -6335,13 +6332,14 @@ function RemindersScreen({ records, onBack, onHome, engineerData, onRenewImporte
           <div style={{ textAlign:"right", flexShrink:0, marginLeft:8 }}>
             {r.daysLeft !== null ? (
               <>
-                <div style={{ fontWeight:700, fontSize:13, color:urgencyColor(r.daysLeft) }}>{r.daysLeft} day{r.daysLeft!==1?"s":""}</div>
-                <div style={{ fontSize:11, color:"#aaa" }}>remaining</div>
+                <div style={{ fontWeight:700, fontSize:13, color:urgencyColor(r.daysLeft) }}>{r.daysLeft < 0 ? `${Math.abs(r.daysLeft)} day${Math.abs(r.daysLeft)!==1?"s":""} overdue` : `${r.daysLeft} day${r.daysLeft!==1?"s":""}`}</div>
+                {r.daysLeft >= 0 && <div style={{ fontSize:11, color:"#aaa" }}>remaining</div>}
               </>
             ) : <div style={{ fontSize:11, color:"#aaa" }}>No due date</div>}
           </div>
         </div>
-        <div style={{ display:"flex", gap:6, alignItems:"center", marginBottom:10 }}>
+        <div style={{ display:"flex", gap:6, alignItems:"center", marginBottom:10, flexWrap:"wrap" }}>
+          {r._isPinned && <span style={{ background:"#eef0f6", color:"#555", fontSize:11, fontWeight:700, padding:"2px 8px", borderRadius:8 }}>📌 Pinned</span>}
           <span style={{ background:`${urgencyColor(r.daysLeft)}18`, color:urgencyColor(r.daysLeft), fontSize:11, fontWeight:700, padding:"2px 8px", borderRadius:8 }}>{r.type}</span>
           {r.dueDate && <span style={{ fontSize:11, color:"#aaa" }}>Due: {r.dueDate.toLocaleDateString("en-GB")}</span>}
           {r.certRef && <span style={{ fontSize:11, color:"#aaa" }}>· {r.certRef}</span>}
@@ -6391,7 +6389,19 @@ function RemindersScreen({ records, onBack, onHome, engineerData, onRenewImporte
     );
   }
 
-  const totalCount = autoReminders.length + pinnedReminders.length + importedDue.length;
+  // Single combined list, ordered strictly by days left ascending (most overdue /
+  // soonest due first, furthest-out or no-due-date items last).
+  const combinedReminders = [
+    ...autoReminders.map(r => ({ ...r, _kind:"live" })),
+    ...pinnedReminders.map(r => ({ ...r, _kind:"live" })),
+    ...importedDue.map(r => ({ ...r, _kind:"imported" })),
+  ].sort((a, b) => {
+    const aVal = a.daysLeft === null || a.daysLeft === undefined ? Infinity : a.daysLeft;
+    const bVal = b.daysLeft === null || b.daysLeft === undefined ? Infinity : b.daysLeft;
+    return aVal - bVal;
+  });
+
+  const totalCount = combinedReminders.length;
 
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:LIGHT_BG, fontFamily:"'Segoe UI',sans-serif" }}>
@@ -6405,34 +6415,12 @@ function RemindersScreen({ records, onBack, onHome, engineerData, onRenewImporte
           </div>
         ) : (
           <>
-            {/* Due within 30 days */}
-            {autoReminders.length > 0 && (
-              <>
-                <div style={{ fontWeight:700, fontSize:13, color:"#c00", marginBottom:10 }}>
-                  ⚠️ Due within 30 days ({autoReminders.length})
-                </div>
-                {autoReminders.map((r, i) => <ReminderCard key={"auto"+i} r={r} i={i}/>)}
-              </>
-            )}
-
-            {/* Manually pinned */}
-            {pinnedReminders.length > 0 && (
-              <>
-                <div style={{ fontWeight:700, fontSize:13, color:"#888", marginBottom:10, marginTop: autoReminders.length>0?16:0 }}>
-                  📬 Manually added reminders ({pinnedReminders.length})
-                </div>
-                {pinnedReminders.map((r, i) => <ReminderCard key={"pin"+i} r={r} i={i}/>)}
-              </>
-            )}
-
-            {/* Imported archive certs due for renewal this year */}
-            {importedDue.length > 0 && (
-              <>
-                <div style={{ fontWeight:700, fontSize:13, color:IMPORT_COLOR, marginBottom:10, marginTop: (autoReminders.length>0||pinnedReminders.length>0)?16:0 }}>
-                  📥 Due this year — Imported Archive ({importedDue.length})
-                </div>
-                {importedDue.map((r, i) => <ImportedReminderCard key={"imp"+i} r={r} i={i}/>)}
-              </>
+            <div style={{ fontWeight:700, fontSize:13, color:"#888", marginBottom:10 }}>
+              📬 {totalCount} reminder{totalCount!==1?"s":""} · soonest/most overdue first
+            </div>
+            {combinedReminders.map((r, i) => r._kind === "imported"
+              ? <ImportedReminderCard key={"r"+i} r={r} i={i}/>
+              : <ReminderCard key={"r"+i} r={r} i={i}/>
             )}
           </>
         )}
