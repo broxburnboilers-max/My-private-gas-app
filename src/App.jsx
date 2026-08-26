@@ -6072,8 +6072,82 @@ function GasIsolationRecordsScreen({ records, onBack, onHome, onDelete, onEdit, 
 }
 
 // ─── Reminders Screen ─────────────────────────────────────────────────────────
-function RemindersScreen({ records, onBack, onHome, engineerData }) {
+// Parses the manifest's "dd-mm-yyyy" date strings into a Date, or null if unparseable.
+function parseUkDateStr(str) {
+  if (!str) return null;
+  const parts = String(str).split("-");
+  if (parts.length !== 3) return null;
+  const d = parseInt(parts[0], 10), m = parseInt(parts[1], 10), y = parseInt(parts[2], 10);
+  if (!d || !m || !y || y < 1900) return null;
+  const dt = new Date(y, m - 1, d);
+  return isNaN(dt.getTime()) ? null : dt;
+}
+
+function importedAddrKey(seed) {
+  const a = (seed?.instAddr1 || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const p = (seed?.instPostcode || "").toLowerCase().replace(/\s/g, "");
+  return a + "|" + p;
+}
+
+// Groups imported-archive certs by installation address, takes the most recent
+// cert per property per category, and returns the ones whose renewal (last cert
+// date + 1 year) falls within the current calendar year. Read-only — never
+// touches the live records array or Netlify Blobs store.
+function computeImportedDueThisYear(manifest) {
+  if (!manifest) return [];
+  const out = [];
+  const now = new Date();
+  const thisYear = now.getFullYear();
+  const cats = [
+    ["gasSafety", "safety", "Gas Safety Certificate"],
+    ["boilerService", "service", "Boiler Service"],
+  ];
+  for (const [cat, tab, typeLabel] of cats) {
+    const list = manifest[cat] || [];
+    const groups = new Map();
+    for (const c of list) {
+      const seed = c.renewSeed || {};
+      const key = importedAddrKey(seed);
+      if (!key || key === "|") continue; // no usable address data, can't group
+      const dt = parseUkDateStr(c.date);
+      if (!dt) continue;
+      const existing = groups.get(key);
+      if (!existing || dt > existing.dt) groups.set(key, { dt, cert: c });
+    }
+    for (const { dt, cert } of groups.values()) {
+      const dueDate = new Date(dt.getFullYear() + 1, dt.getMonth(), dt.getDate());
+      if (dueDate.getFullYear() !== thisYear) continue;
+      const seed = cert.renewSeed || {};
+      out.push({
+        name: seed.clientName || seed.instName || "",
+        addr1: seed.instAddr1 || "",
+        addr2: seed.instAddr2 || "",
+        postcode: seed.instPostcode || "",
+        dueDate,
+        daysLeft: Math.round((dueDate - now) / (1000 * 60 * 60 * 24)),
+        type: typeLabel,
+        certRef: cert.reference || "",
+        cert, tab,
+      });
+    }
+  }
+  out.sort((a, b) => a.dueDate - b.dueDate);
+  return out;
+}
+
+function RemindersScreen({ records, onBack, onHome, engineerData, onRenewImported }) {
   const DAYS_AHEAD = 30;
+  const IMPORT_COLOR = "#0a8a5c";
+
+  const [importedManifest, setImportedManifest] = useState(null);
+  const [confirmRenewImported, setConfirmRenewImported] = useState(null);
+  useEffect(() => {
+    fetch("/imported-certs-from-gas-checker/manifest.json")
+      .then(r => (r.ok ? r.json() : null))
+      .then(setImportedManifest)
+      .catch(() => {});
+  }, []);
+  const importedDue = computeImportedDueThisYear(importedManifest);
 
   const now = new Date();
   const cutoff = new Date(now); cutoff.setDate(cutoff.getDate() + DAYS_AHEAD);
@@ -6285,7 +6359,39 @@ function RemindersScreen({ records, onBack, onHome, engineerData }) {
     );
   }
 
-  const totalCount = autoReminders.length + pinnedReminders.length;
+  function ImportedReminderCard({ r, i }) {
+    return (
+      <div key={i} style={{ background:"#fff", borderRadius:12, padding:16, marginBottom:12, boxShadow:"0 2px 10px rgba(0,0,0,0.07)", borderLeft:`4px solid ${IMPORT_COLOR}` }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
+          <div>
+            <div style={{ fontWeight:700, fontSize:15, color:"#222" }}>{r.name || "Unknown"}</div>
+            <div style={{ fontSize:12, color:"#666", marginTop:2 }}>{[r.addr1, r.addr2, r.postcode].filter(Boolean).join(", ")}</div>
+          </div>
+          <div style={{ textAlign:"right", flexShrink:0, marginLeft:8 }}>
+            {r.daysLeft !== null ? (
+              <>
+                <div style={{ fontWeight:700, fontSize:13, color:urgencyColor(r.daysLeft) }}>{r.daysLeft < 0 ? `${Math.abs(r.daysLeft)} day${Math.abs(r.daysLeft)!==1?"s":""} overdue` : `${r.daysLeft} day${r.daysLeft!==1?"s":""}`}</div>
+                {r.daysLeft >= 0 && <div style={{ fontSize:11, color:"#aaa" }}>remaining</div>}
+              </>
+            ) : <div style={{ fontSize:11, color:"#aaa" }}>No due date</div>}
+          </div>
+        </div>
+        <div style={{ display:"flex", gap:6, alignItems:"center", marginBottom:10, flexWrap:"wrap" }}>
+          <span style={{ background:`${IMPORT_COLOR}18`, color:IMPORT_COLOR, fontSize:11, fontWeight:700, padding:"2px 8px", borderRadius:8 }}>📥 Imported Archive</span>
+          <span style={{ background:`${urgencyColor(r.daysLeft)}18`, color:urgencyColor(r.daysLeft), fontSize:11, fontWeight:700, padding:"2px 8px", borderRadius:8 }}>{r.type}</span>
+          {r.dueDate && <span style={{ fontSize:11, color:"#aaa" }}>Due: {r.dueDate.toLocaleDateString("en-GB")}</span>}
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns: onRenewImported ? "1fr 1fr" : "1fr", gap:8 }}>
+          <a href={r.cert.url} target="_blank" rel="noopener noreferrer" style={{ display:"block", textAlign:"center", padding:"10px 0", background:"#f0f4ff", color:BLUE, border:`2px solid ${BLUE}`, borderRadius:8, fontWeight:700, fontSize:13, textDecoration:"none" }}>📄 View Original</a>
+          {onRenewImported && (
+            <button onClick={()=>setConfirmRenewImported(r)} style={{ padding:"10px 0", background:IMPORT_COLOR, color:"#fff", border:"none", borderRadius:8, fontWeight:700, fontSize:13, cursor:"pointer" }}>🔄 Renew</button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const totalCount = autoReminders.length + pinnedReminders.length + importedDue.length;
 
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:LIGHT_BG, fontFamily:"'Segoe UI',sans-serif" }}>
@@ -6295,7 +6401,7 @@ function RemindersScreen({ records, onBack, onHome, engineerData }) {
           <div style={{ textAlign:"center", marginTop:60 }}>
             <div style={{ fontSize:48, marginBottom:12 }}>✅</div>
             <div style={{ fontWeight:700, fontSize:17, color:"#222", marginBottom:8 }}>No reminders</div>
-            <div style={{ fontSize:13, color:"#888" }}>No records due within 30 days and none manually added.<br/>Tap a GSC or boiler service record and choose <strong>Add to Reminders</strong>.</div>
+            <div style={{ fontSize:13, color:"#888" }}>No records due within 30 days, none manually added, and no imported-archive certs due for renewal this year.<br/>Tap a GSC or boiler service record and choose <strong>Add to Reminders</strong>.</div>
           </div>
         ) : (
           <>
@@ -6318,10 +6424,34 @@ function RemindersScreen({ records, onBack, onHome, engineerData }) {
                 {pinnedReminders.map((r, i) => <ReminderCard key={"pin"+i} r={r} i={i}/>)}
               </>
             )}
+
+            {/* Imported archive certs due for renewal this year */}
+            {importedDue.length > 0 && (
+              <>
+                <div style={{ fontWeight:700, fontSize:13, color:IMPORT_COLOR, marginBottom:10, marginTop: (autoReminders.length>0||pinnedReminders.length>0)?16:0 }}>
+                  📥 Due this year — Imported Archive ({importedDue.length})
+                </div>
+                {importedDue.map((r, i) => <ImportedReminderCard key={"imp"+i} r={r} i={i}/>)}
+              </>
+            )}
           </>
         )}
       </div>
       <BottomBar onHome={onHome}/>
+      {confirmRenewImported && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:3000, padding:20 }}>
+          <div style={{ background:"#fff", borderRadius:16, width:"100%", maxWidth:340, overflow:"hidden", boxShadow:"0 20px 60px rgba(0,0,0,0.3)" }}>
+            <div style={{ padding:"20px 20px 12px", fontWeight:700, fontSize:16, textAlign:"center", color:"#222" }}>Renew {confirmRenewImported.type}?</div>
+            <div style={{ padding:"0 20px 20px", fontSize:14, color:"#666", textAlign:"center" }}>This will start a new {confirmRenewImported.type} for <strong>{confirmRenewImported.name || "this property"}</strong>, pre-filled with the client/property/appliance details from the imported archive. Safety readings and checks are left blank for you to enter fresh. The new record is saved to your live folder; the archived PDF stays untouched.</div>
+            <div style={{ display:"flex", borderTop:"1px solid #eee" }}>
+              <button onClick={()=>setConfirmRenewImported(null)}
+                style={{ flex:1, padding:16, background:"#fff", color:"#444", border:"none", fontWeight:700, fontSize:15, cursor:"pointer", borderRight:"1px solid #eee" }}>Cancel</button>
+              <button onClick={()=>{ const rec=buildRenewRecFromImported(confirmRenewImported.cert, confirmRenewImported.tab); setConfirmRenewImported(null); onRenewImported(rec); }}
+                style={{ flex:1, padding:16, background:IMPORT_COLOR, color:"#fff", border:"none", fontWeight:700, fontSize:15, cursor:"pointer" }}>Renew</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -6563,7 +6693,7 @@ function ImportedGasCheckerScreen({ onBack, onHome, onRenewImported }) {
 function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, onEditGi, onEditBs, onEditBmk, invoices, onCreateInvoice, onDeleteInvoice, onMarkPaid, quotes, onDeleteQuote, onConvertQuoteToInvoice, onImportInvoices, onImportQuotes, onImportReports, onImportFolders, engineerData, accountReports, onDeleteReport, yearlyReports, onDeleteYearly, onRebuildYearly, onUpdateReport, gscFolders, onAddFolder, onRenameFolder, onDeleteFolder, onUpdateRecord, onEditInvoice, onEditQuote, company, onRenewImported }) {
   const [folder, setFolder] = useState(null);
 
-  if (folder === "reminders") return <RemindersScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} engineerData={engineerData}/>;
+  if (folder === "reminders") return <RemindersScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} engineerData={engineerData} onRenewImported={onRenewImported}/>;
   if (folder === "gsc") return <GasSafetyCertsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete} onCreateInvoice={onCreateInvoice} gscFolders={gscFolders} onAddFolder={onAddFolder} onRenameFolder={onRenameFolder} onDeleteFolder={onDeleteFolder} onUpdateRecord={onUpdateRecord}/>;
   if (folder === "bs") return <BoilerServiceRecordsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete} onCreateInvoice={onCreateInvoice} onUpdateRecord={onUpdateRecord} onEdit={onEditBs}/>;
   if (folder === "gw") return <GasWorksRecordsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete} onEdit={onEditGw} onCreateInvoice={onCreateInvoice}/>;
