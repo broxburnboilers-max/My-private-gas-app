@@ -4056,7 +4056,7 @@ function InvoicePDFPreview({ invoiceData: inv, onClose, onSave, autoDownload, on
           <div style={{ textAlign: "right" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, marginBottom: 6 }}>
               {inv.gasSafeNo && <img src={GAS_SAFE_LOGO} style={{ height: 40, objectFit: "contain" }} alt="Gas Safe"/>}
-              <img src={companyLogoImg(inv.company)} style={{ height: 40, objectFit: "contain", maxWidth: 100 }} alt={inv.companyName || "Company logo"}/>
+              <img src={logoForCompanyName(inv.companyName)} style={{ height: 40, objectFit: "contain", maxWidth: 100 }} alt={inv.companyName || "Company logo"}/>
             </div>
             <div style={{ fontWeight: 700, fontSize: 14, color: "#222" }}>{inv.companyName}</div>
             <div style={{ fontSize: 11, color: "#555", lineHeight: 1.6 }}>{inv.companyAddr}<br/>{inv.companyPostcode}<br/>{inv.companyTel}</div>
@@ -4500,7 +4500,7 @@ function QuotePDFPreview({ quoteData: q, onClose, onSave }) {
           <div style={{ textAlign:"right" }}>
             <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end", gap:10, marginBottom:6 }}>
               {q.gasSafeNo && <img src={GAS_SAFE_LOGO} style={{ height:40, objectFit:"contain" }} alt="Gas Safe"/>}
-              <img src={companyLogoImg(q.company)} style={{ height:40, objectFit:"contain", maxWidth:100 }} alt={q.companyName || "Company logo"}/>
+              <img src={logoForCompanyName(q.companyName)} style={{ height:40, objectFit:"contain", maxWidth:100 }} alt={q.companyName || "Company logo"}/>
             </div>
             <div style={{ fontWeight:700, fontSize:14, color:"#222" }}>{q.companyName}</div>
             <div style={{ fontSize:11, color:"#555", lineHeight:1.6 }}>{q.companyAddr}<br/>{q.companyPostcode}<br/>{q.companyTel}</div>
