@@ -48,7 +48,7 @@ const COMPANY_PROFILES = {
     logo: "CPS_LOGO",
     // Coventry's own Gmail account — renewal reminders for certs/services saved
     // under this login go to this calendar, not West Lothian's.
-    calendarEmail: "coventryplumbingservices@gmail.com",
+    calendarEmail: "coventryplumbingservicesltd@gmail.com",
   },
   // Property-survey consultancy. Invoicing only — no certificates/records screens,
   // and no person's name anywhere on its documents (companyName/address/logo only).
