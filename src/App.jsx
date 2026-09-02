@@ -29,6 +29,9 @@ const COMPANY_PROFILES = {
     engineerName: "Andrew King-Page",
     gasId: "5927846",
     logo: "WLG_LOGO",
+    // Google account whose Calendar receives this company's 11-month renewal
+    // reminders (see createCalendarReminder / GCAL helpers below).
+    calendarEmail: "akingpage@gmail.com",
   },
   cps: {
     key: "cps",
@@ -43,6 +46,9 @@ const COMPANY_PROFILES = {
     engineerName: "Darcey Holder-Smith",
     gasId: "982637",
     logo: "CPS_LOGO",
+    // Coventry's own Gmail account — renewal reminders for certs/services saved
+    // under this login go to this calendar, not West Lothian's.
+    calendarEmail: "coventryplumbingservices@gmail.com",
   },
   // Property-survey consultancy. Invoicing only — no certificates/records screens,
   // and no person's name anywhere on its documents (companyName/address/logo only).
@@ -7858,51 +7864,67 @@ function EmailImportScreen({ onBack, onHome, onImportCerts, defaultEngineerData 
 const GCAL_CLIENT_ID = "554370268319-onp7rq06gcimldocf4h4dvuq6p224tfs.apps.googleusercontent.com";
 const GCAL_SCOPE = "https://www.googleapis.com/auth/calendar.events";
 
-function getGCalToken() {
-  const raw = localStorage.getItem("gcal_token");
+// Each company keeps its own Calendar sign-in, so West Lothian's certs land on
+// akingpage@gmail.com's calendar while Coventry's land on Coventry's own Gmail
+// calendar. `gcal_token` (no suffix) is kept as West Lothian's storage key so
+// engineers already signed in before this change don't get signed out.
+function gcalTokenKey(companyKey) {
+  return (companyKey || "wlg") === "wlg" ? "gcal_token" : "gcal_token_" + companyKey;
+}
+
+function getGCalToken(companyKey) {
+  const storageKey = gcalTokenKey(companyKey);
+  const raw = localStorage.getItem(storageKey);
   if (!raw) return null;
   try {
     const t = JSON.parse(raw);
-    if (Date.now() > t.expires_at) { localStorage.removeItem("gcal_token"); return null; }
+    if (Date.now() > t.expires_at) { localStorage.removeItem(storageKey); return null; }
     return t.access_token;
   } catch { return null; }
 }
 
-function saveGCalToken(token, expiresIn) {
-  localStorage.setItem("gcal_token", JSON.stringify({
+function saveGCalToken(token, expiresIn, companyKey) {
+  localStorage.setItem(gcalTokenKey(companyKey), JSON.stringify({
     access_token: token,
     expires_at: Date.now() + (expiresIn - 60) * 1000
   }));
 }
 
-function startGCalOAuth() {
+function startGCalOAuth(companyKey) {
+  const key = companyKey || "wlg";
+  const profile = companyProfile(key);
   const params = new URLSearchParams({
     client_id: GCAL_CLIENT_ID,
     redirect_uri: window.location.origin + window.location.pathname,
     response_type: "token",
     scope: GCAL_SCOPE,
     include_granted_scopes: "true",
-    state: "gcal_auth",
-    login_hint: "akingpage@gmail.com",
+    state: "gcal_auth:" + key,
+    login_hint: profile.calendarEmail || profile.companyEmail || "",
   });
   window.location.href = "https://accounts.google.com/o/oauth2/v2/auth?" + params.toString();
 }
 
-// Call after returning from OAuth redirect
+// Call after returning from OAuth redirect. Returns the company key the token
+// was requested for (so the caller knows which calendar was just linked), or
+// null if this wasn't a Calendar OAuth return.
 function handleGCalOAuthReturn() {
   if (window.location.hash && window.location.hash.includes("access_token")) {
     const params = new URLSearchParams(window.location.hash.slice(1));
     const token = params.get("access_token");
     const expiresIn = parseInt(params.get("expires_in") || "3600");
     const state = params.get("state");
-    if (token && state === "gcal_auth") {
-      saveGCalToken(token, expiresIn);
+    // Legacy plain "gcal_auth" state (from before per-company support) always
+    // meant West Lothian, since that was the only company with this feature.
+    const companyKey = state === "gcal_auth" ? "wlg" : (state && state.startsWith("gcal_auth:") ? state.slice("gcal_auth:".length) : null);
+    if (token && companyKey) {
+      saveGCalToken(token, expiresIn, companyKey);
       // Clean URL
       window.history.replaceState({}, document.title, window.location.pathname);
-      return true;
+      return companyKey;
     }
   }
-  return false;
+  return null;
 }
 
 // ─── BOILER SERVICE FLOW ──────────────────────────────────────────────────────
@@ -8759,23 +8781,30 @@ function BSPDFPreview({ serviceData, engineerData, signatureData, onClose, autoD
   );
 }
 
+// Reminders always go to whichever company is currently logged in's own
+// Calendar (companyProfile(...).calendarEmail) — West Lothian's certs to
+// akingpage@gmail.com, Coventry's to their own Gmail account, etc.
 async function createCalendarReminder(certData) {
-  let token = getGCalToken();
+  const companyKey = getActiveCompany();
+  const profile = companyProfile(companyKey);
+  const calendarEmail = profile.calendarEmail || profile.companyEmail;
+  let token = getGCalToken(companyKey);
   if (!token) {
     // Store the pending reminder data so we can create it after OAuth returns
     const reminderDate = new Date();
     reminderDate.setMonth(reminderDate.getMonth() + 11);
-    const pendingData = { certData, reminderDate: reminderDate.toISOString() };
+    const pendingData = { certData, reminderDate: reminderDate.toISOString(), companyKey };
     localStorage.setItem("gcal_pending", JSON.stringify(pendingData));
-    if (confirm("To add the Google Calendar reminder, you need to sign in with your Google account (akingpage@gmail.com).\n\nTap OK to sign in now.")) {
-      startGCalOAuth();
+    const acctLabel = calendarEmail ? " (" + calendarEmail + ")" : "";
+    if (confirm("To add the Google Calendar reminder, you need to sign in with " + profile.label + "'s Google account" + acctLabel + ".\n\nTap OK to sign in now.")) {
+      startGCalOAuth(companyKey);
     }
     return;
   }
-  await postCalendarEvent(token, certData);
+  await postCalendarEvent(token, certData, undefined, companyKey);
 }
 
-async function postCalendarEvent(token, certData, reminderDateOverride) {
+async function postCalendarEvent(token, certData, reminderDateOverride, companyKey) {
   const reminderDate = reminderDateOverride ? new Date(reminderDateOverride) : (() => { const d = new Date(); d.setMonth(d.getMonth() + 11); return d; })();
   const dateStr = reminderDate.toISOString().slice(0, 10);
   const customerName = certData.clientName || certData.instName || "Customer";
@@ -8796,7 +8825,7 @@ async function postCalendarEvent(token, certData, reminderDateOverride) {
       body: JSON.stringify(event),
     });
     if (resp.status === 401) {
-      localStorage.removeItem("gcal_token");
+      localStorage.removeItem(gcalTokenKey(companyKey));
       alert("⚠️ Google Calendar session expired. Please save the next certificate to re-authenticate.");
       return;
     }
@@ -9784,7 +9813,9 @@ function App() {
     }
   }, [accountReports]); // re-run whenever monthly reports change
 
-  // Handle Google OAuth return and any pending calendar event
+  // Handle Google OAuth return and any pending calendar event. `returned` is
+  // the company key the just-completed sign-in belongs to (e.g. "wlg"/"cps"),
+  // so the reminder is posted to that same company's calendar/token.
   useEffect(() => {
     const returned = handleGCalOAuthReturn();
     if (returned) {
@@ -9792,9 +9823,10 @@ function App() {
       if (pending) {
         localStorage.removeItem("gcal_pending");
         try {
-          const { certData: cd, reminderDate } = JSON.parse(pending);
-          const token = getGCalToken();
-          if (token) postCalendarEvent(token, cd, reminderDate);
+          const { certData: cd, reminderDate, companyKey: pendingCompanyKey } = JSON.parse(pending);
+          const companyKey = pendingCompanyKey || returned;
+          const token = getGCalToken(companyKey);
+          if (token) postCalendarEvent(token, cd, reminderDate, companyKey);
         } catch {}
       }
     }
