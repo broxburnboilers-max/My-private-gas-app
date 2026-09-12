@@ -6166,6 +6166,7 @@ function computeImportedDueThisYear(manifest) {
       const dueDate = new Date(dt.getFullYear() + 1, dt.getMonth(), dt.getDate());
       if (dueDate.getFullYear() !== thisYear) continue;
       const seed = cert.renewSeed || {};
+      const dedupeKey = cert.reference || `${seed.clientName || seed.instName || ""}|${importedAddrKey(seed)}|${dueDate.getTime()}`;
       out.push({
         name: seed.clientName || seed.instName || "",
         addr1: seed.instAddr1 || "",
@@ -6176,6 +6177,7 @@ function computeImportedDueThisYear(manifest) {
         type: typeLabel,
         certRef: cert.reference || "",
         cert, tab,
+        key: dedupeKey,
       });
     }
   }
@@ -6183,19 +6185,27 @@ function computeImportedDueThisYear(manifest) {
   return out;
 }
 
-function RemindersScreen({ records, onBack, onHome, engineerData, onRenewImported }) {
+const DISMISSED_IMPORTED_REMINDERS_KEY = "dismissedImportedReminders";
+function loadDismissedImportedReminders() {
+  try { return JSON.parse(localStorage.getItem(DISMISSED_IMPORTED_REMINDERS_KEY) || "[]"); } catch { return []; }
+}
+
+function RemindersScreen({ records, onBack, onHome, engineerData, onRenewImported, onUpdateRecord }) {
   const DAYS_AHEAD = 30;
   const IMPORT_COLOR = "#0a8a5c";
 
   const [importedManifest, setImportedManifest] = useState(null);
   const [confirmRenewImported, setConfirmRenewImported] = useState(null);
+  const [dismissedImported, setDismissedImported] = useState(loadDismissedImportedReminders);
+  const [confirmClearOverdue, setConfirmClearOverdue] = useState(false);
   useEffect(() => {
     fetch("/imported-certs-from-gas-checker/manifest.json")
       .then(r => (r.ok ? r.json() : null))
       .then(setImportedManifest)
       .catch(() => {});
   }, []);
-  const importedDue = computeImportedDueThisYear(importedManifest);
+  const importedDueAll = computeImportedDueThisYear(importedManifest);
+  const importedDue = importedDueAll.filter(r => !dismissedImported.includes(r.key));
 
   const now = new Date();
   const cutoff = new Date(now); cutoff.setDate(cutoff.getDate() + DAYS_AHEAD);
@@ -6236,7 +6246,7 @@ function RemindersScreen({ records, onBack, onHome, engineerData, onRenewImporte
   // Pinned: manually added regardless of date
   const pinnedReminders = [];
 
-  for (const r of records) {
+  for (const r of records.map((rec, i) => ({ ...rec, _origIdx: i }))) {
     const info = extractInfo(r);
     if (!info) continue;
     const { name, addr1, addr2, postcode, tel, email, dueDate, type, certRef } = info;
@@ -6246,10 +6256,39 @@ function RemindersScreen({ records, onBack, onHome, engineerData, onRenewImporte
     const isPinned = r.pinnedReminder;
 
     if (isDueSoon) {
-      autoReminders.push({ name, addr1, addr2, postcode, tel, email, dueDate, daysLeft, type, certRef, _isPinned:false });
+      autoReminders.push({ name, addr1, addr2, postcode, tel, email, dueDate, daysLeft, type, certRef, _isPinned:false, _origIdx:r._origIdx });
     } else if (isPinned) {
-      pinnedReminders.push({ name, addr1, addr2, postcode, tel, email, dueDate, daysLeft, type, certRef, _isPinned:true });
+      pinnedReminders.push({ name, addr1, addr2, postcode, tel, email, dueDate, daysLeft, type, certRef, _isPinned:true, _origIdx:r._origIdx });
     }
+  }
+
+  function dismissOneImported(key) {
+    setDismissedImported(prev => {
+      const next = prev.includes(key) ? prev : [...prev, key];
+      try { localStorage.setItem(DISMISSED_IMPORTED_REMINDERS_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
+
+  function removePinnedReminder(origIdx) {
+    if (!onUpdateRecord) return;
+    const rec = records[origIdx];
+    if (!rec) return;
+    onUpdateRecord(origIdx, { ...rec, pinnedReminder: false });
+  }
+
+  function clearAllOverdue() {
+    const overduePinned = pinnedReminders.filter(r => r.daysLeft !== null && r.daysLeft < 0);
+    for (const r of overduePinned) removePinnedReminder(r._origIdx);
+    const overdueImportedKeys = importedDue.filter(r => r.daysLeft !== null && r.daysLeft < 0).map(r => r.key);
+    if (overdueImportedKeys.length) {
+      setDismissedImported(prev => {
+        const next = [...new Set([...prev, ...overdueImportedKeys])];
+        try { localStorage.setItem(DISMISSED_IMPORTED_REMINDERS_KEY, JSON.stringify(next)); } catch {}
+        return next;
+      });
+    }
+    setConfirmClearOverdue(false);
   }
 
   const eng = engineerData || {};
@@ -6401,6 +6440,9 @@ function RemindersScreen({ records, onBack, onHome, engineerData, onRenewImporte
           <button onClick={()=>copyHTMLEmail(r)} style={{ width:"100%", padding:"10px 0", background:"#f0f4ff", color:BLUE, border:`2px solid ${BLUE}`, borderRadius:8, fontWeight:700, fontSize:13, cursor:"pointer" }}>📋 Copy HTML Email</button>
         )}
         {r.tel && <div style={{ fontSize:12, color:"#888", marginTop:6, textAlign:"center" }}>📞 {r.tel}</div>}
+        {r._isPinned && r.daysLeft !== null && r.daysLeft < 0 && (
+          <button onClick={()=>removePinnedReminder(r._origIdx)} style={{ width:"100%", marginTop:8, padding:"8px 0", background:"#fff", color:"#c00", border:"1px solid #f0c0c0", borderRadius:8, fontWeight:600, fontSize:12, cursor:"pointer" }}>🗑️ Remove this reminder</button>
+        )}
       </div>
     );
   }
@@ -6433,6 +6475,9 @@ function RemindersScreen({ records, onBack, onHome, engineerData, onRenewImporte
             <button onClick={()=>setConfirmRenewImported(r)} style={{ padding:"10px 0", background:IMPORT_COLOR, color:"#fff", border:"none", borderRadius:8, fontWeight:700, fontSize:13, cursor:"pointer" }}>🔄 Renew</button>
           )}
         </div>
+        {r.daysLeft !== null && r.daysLeft < 0 && (
+          <button onClick={()=>dismissOneImported(r.key)} style={{ width:"100%", marginTop:8, padding:"8px 0", background:"#fff", color:"#c00", border:"1px solid #f0c0c0", borderRadius:8, fontWeight:600, fontSize:12, cursor:"pointer" }}>🗑️ Remove this reminder</button>
+        )}
       </div>
     );
   }
@@ -6450,6 +6495,7 @@ function RemindersScreen({ records, onBack, onHome, engineerData, onRenewImporte
   });
 
   const totalCount = combinedReminders.length;
+  const overdueCount = combinedReminders.filter(r => r.daysLeft !== null && r.daysLeft < 0).length;
 
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:LIGHT_BG, fontFamily:"'Segoe UI',sans-serif" }}>
@@ -6463,8 +6509,13 @@ function RemindersScreen({ records, onBack, onHome, engineerData, onRenewImporte
           </div>
         ) : (
           <>
-            <div style={{ fontWeight:700, fontSize:13, color:"#888", marginBottom:10 }}>
-              📬 {totalCount} reminder{totalCount!==1?"s":""} · soonest/most overdue first
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10, gap:8, flexWrap:"wrap" }}>
+              <div style={{ fontWeight:700, fontSize:13, color:"#888" }}>
+                📬 {totalCount} reminder{totalCount!==1?"s":""} · soonest/most overdue first
+              </div>
+              {overdueCount > 0 && (
+                <button onClick={()=>setConfirmClearOverdue(true)} style={{ padding:"8px 14px", background:"#c00", color:"#fff", border:"none", borderRadius:8, fontWeight:700, fontSize:12, cursor:"pointer", whiteSpace:"nowrap" }}>🗑️ Clear {overdueCount} overdue</button>
+              )}
             </div>
             {combinedReminders.map((r, i) => r._kind === "imported"
               ? <ImportedReminderCard key={"r"+i} r={r} i={i}/>
@@ -6474,6 +6525,20 @@ function RemindersScreen({ records, onBack, onHome, engineerData, onRenewImporte
         )}
       </div>
       <BottomBar onHome={onHome}/>
+      {confirmClearOverdue && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:3000, padding:20 }}>
+          <div style={{ background:"#fff", borderRadius:16, width:"100%", maxWidth:340, overflow:"hidden", boxShadow:"0 20px 60px rgba(0,0,0,0.3)" }}>
+            <div style={{ padding:"20px 20px 12px", fontWeight:700, fontSize:16, textAlign:"center", color:"#222" }}>Clear {overdueCount} overdue reminder{overdueCount!==1?"s":""}?</div>
+            <div style={{ padding:"0 20px 20px", fontSize:14, color:"#666", textAlign:"center" }}>This removes every overdue item from this list. Pinned records are unpinned (their certificate/service record itself is not deleted), and archived-cert reminders are hidden. You can always re-add a pinned reminder from the record's menu.</div>
+            <div style={{ display:"flex", borderTop:"1px solid #eee" }}>
+              <button onClick={()=>setConfirmClearOverdue(false)}
+                style={{ flex:1, padding:16, background:"#fff", color:"#444", border:"none", fontWeight:700, fontSize:15, cursor:"pointer", borderRight:"1px solid #eee" }}>Cancel</button>
+              <button onClick={clearAllOverdue}
+                style={{ flex:1, padding:16, background:"#c00", color:"#fff", border:"none", fontWeight:700, fontSize:15, cursor:"pointer" }}>Clear All</button>
+            </div>
+          </div>
+        </div>
+      )}
       {confirmRenewImported && (
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:3000, padding:20 }}>
           <div style={{ background:"#fff", borderRadius:16, width:"100%", maxWidth:340, overflow:"hidden", boxShadow:"0 20px 60px rgba(0,0,0,0.3)" }}>
@@ -6734,7 +6799,7 @@ function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, 
   const invoiceOnlyCompany = !!companyProfile(company).invoiceOnly;
   const [folder, setFolder] = useState(() => invoiceOnlyCompany ? "inv" : null);
 
-  if (folder === "reminders") return <RemindersScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} engineerData={engineerData} onRenewImported={onRenewImported}/>;
+  if (folder === "reminders") return <RemindersScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} engineerData={engineerData} onRenewImported={onRenewImported} onUpdateRecord={onUpdateRecord}/>;
   if (folder === "gsc") return <GasSafetyCertsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete} onCreateInvoice={onCreateInvoice} gscFolders={gscFolders} onAddFolder={onAddFolder} onRenameFolder={onRenameFolder} onDeleteFolder={onDeleteFolder} onUpdateRecord={onUpdateRecord}/>;
   if (folder === "bs") return <BoilerServiceRecordsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete} onCreateInvoice={onCreateInvoice} onUpdateRecord={onUpdateRecord} onEdit={onEditBs}/>;
   if (folder === "gw") return <GasWorksRecordsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete} onEdit={onEditGw} onCreateInvoice={onCreateInvoice}/>;
