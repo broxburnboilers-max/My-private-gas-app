@@ -6254,6 +6254,8 @@ function RemindersScreen({ records, onBack, onHome, engineerData, onRenewImporte
     const daysLeft = dueDate && !isNaN(dueDate) ? Math.round((dueDate - now) / (1000*60*60*24)) : null;
     const isDueSoon = dueDate && !isNaN(dueDate) && dueDate >= now && dueDate <= cutoff;
     const isPinned = r.pinnedReminder;
+    const dismissedForThisDue = dueDate && !isNaN(dueDate) && r.reminderDismissedFor === dueDate.getTime();
+    if (dismissedForThisDue) continue;
 
     if (isDueSoon) {
       autoReminders.push({ name, addr1, addr2, postcode, tel, email, dueDate, daysLeft, type, certRef, _isPinned:false, _origIdx:r._origIdx });
@@ -6270,16 +6272,16 @@ function RemindersScreen({ records, onBack, onHome, engineerData, onRenewImporte
     });
   }
 
-  function removePinnedReminder(origIdx) {
+  function dismissLiveReminder(origIdx, dueDate) {
     if (!onUpdateRecord) return;
     const rec = records[origIdx];
     if (!rec) return;
-    onUpdateRecord(origIdx, { ...rec, pinnedReminder: false });
+    onUpdateRecord(origIdx, { ...rec, pinnedReminder: false, reminderDismissedFor: dueDate && !isNaN(dueDate) ? dueDate.getTime() : Date.now() });
   }
 
   function clearAllOverdue() {
     const overduePinned = pinnedReminders.filter(r => r.daysLeft !== null && r.daysLeft < 0);
-    for (const r of overduePinned) removePinnedReminder(r._origIdx);
+    for (const r of overduePinned) dismissLiveReminder(r._origIdx, r.dueDate);
     const overdueImportedKeys = importedDue.filter(r => r.daysLeft !== null && r.daysLeft < 0).map(r => r.key);
     if (overdueImportedKeys.length) {
       setDismissedImported(prev => {
@@ -6440,9 +6442,7 @@ function RemindersScreen({ records, onBack, onHome, engineerData, onRenewImporte
           <button onClick={()=>copyHTMLEmail(r)} style={{ width:"100%", padding:"10px 0", background:"#f0f4ff", color:BLUE, border:`2px solid ${BLUE}`, borderRadius:8, fontWeight:700, fontSize:13, cursor:"pointer" }}>📋 Copy HTML Email</button>
         )}
         {r.tel && <div style={{ fontSize:12, color:"#888", marginTop:6, textAlign:"center" }}>📞 {r.tel}</div>}
-        {r._isPinned && r.daysLeft !== null && r.daysLeft < 0 && (
-          <button onClick={()=>removePinnedReminder(r._origIdx)} style={{ width:"100%", marginTop:8, padding:"8px 0", background:"#fff", color:"#c00", border:"1px solid #f0c0c0", borderRadius:8, fontWeight:600, fontSize:12, cursor:"pointer" }}>🗑️ Remove this reminder</button>
-        )}
+        <button onClick={()=>dismissLiveReminder(r._origIdx, r.dueDate)} style={{ width:"100%", marginTop:8, padding:"8px 0", background:"#fff", color:"#c00", border:"1px solid #f0c0c0", borderRadius:8, fontWeight:600, fontSize:12, cursor:"pointer" }}>🗑️ Dismiss</button>
       </div>
     );
   }
@@ -6475,9 +6475,7 @@ function RemindersScreen({ records, onBack, onHome, engineerData, onRenewImporte
             <button onClick={()=>setConfirmRenewImported(r)} style={{ padding:"10px 0", background:IMPORT_COLOR, color:"#fff", border:"none", borderRadius:8, fontWeight:700, fontSize:13, cursor:"pointer" }}>🔄 Renew</button>
           )}
         </div>
-        {r.daysLeft !== null && r.daysLeft < 0 && (
-          <button onClick={()=>dismissOneImported(r.key)} style={{ width:"100%", marginTop:8, padding:"8px 0", background:"#fff", color:"#c00", border:"1px solid #f0c0c0", borderRadius:8, fontWeight:600, fontSize:12, cursor:"pointer" }}>🗑️ Remove this reminder</button>
-        )}
+        <button onClick={()=>dismissOneImported(r.key)} style={{ width:"100%", marginTop:8, padding:"8px 0", background:"#fff", color:"#c00", border:"1px solid #f0c0c0", borderRadius:8, fontWeight:600, fontSize:12, cursor:"pointer" }}>🗑️ Dismiss</button>
       </div>
     );
   }
