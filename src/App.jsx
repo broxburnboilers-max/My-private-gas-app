@@ -3758,6 +3758,7 @@ function InvoiceWizard({ sourceRecord, onSave, onClose, invoiceRecords, prefillD
       lineItems, subTotal, taxTotal, total, fullyPaid, paid: paidAmt, outstanding, paymentMethod, terms, companyNumber, vatRegNumber,
       notes, companyName, companyAddr, companyPostcode: companyPostcode2, companyTel: companyTel2, gasSafeNo: gasSafeNo2, issuedBy, engineerId,
       createdAt: isEditing && pf.createdAt ? pf.createdAt : new Date().toISOString(),
+      paidAt: fullyPaid ? (isEditing && pf.paidAt ? pf.paidAt : new Date().toISOString()) : undefined,
     };
     return (
       <InvoicePDFPreview
@@ -5102,6 +5103,7 @@ function InvoiceImportScreen({ onBack, onHome, onImport }) {
 
 function InvoicesScreen({ invoices, onBack, onHome, onDelete, onMarkPaid, onImport, onEdit, company }) {
   const [subFolder, setSubFolder] = useState(null);
+  const [paidMonth, setPaidMonth] = useState(null);
 
   const allInvoices = invoices
     .map((inv, i) => ({ ...inv, _origIdx: i }))
@@ -5121,15 +5123,65 @@ function InvoicesScreen({ invoices, onBack, onHome, onDelete, onMarkPaid, onImpo
     />
   );
 
+  // Paid invoices are grouped into month folders by the date they were marked
+  // paid (paidAt). Older invoices without paidAt fall back to their created date.
+  const paidMonthKey = (inv) => {
+    const d = new Date(inv.paidAt || inv.createdAt || inv.savedAt || 0);
+    if (isNaN(d) || d.getTime() === 0) return "unknown";
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+  };
+  const paidMonthLabel = (key) => {
+    if (key === "unknown") return "No date";
+    const [y, m] = key.split("-").map(Number);
+    return new Date(y, m-1, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+  };
+  const paidByMonth = {};
+  for (const inv of paidInvoices) {
+    const k = paidMonthKey(inv);
+    (paidByMonth[k] = paidByMonth[k] || []).push(inv);
+  }
+  const paidMonthKeys = Object.keys(paidByMonth).sort((a, b) => a === "unknown" ? 1 : b === "unknown" ? -1 : b.localeCompare(a));
+
+  if (subFolder === "paid" && paidMonth && paidByMonth[paidMonth]) {
+    const monthInvs = [...paidByMonth[paidMonth]].sort((a, b) => new Date(b.paidAt || b.createdAt || 0) - new Date(a.paidAt || a.createdAt || 0));
+    return (
+      <InvoicesList
+        invoices={monthInvs}
+        title={`Paid · ${paidMonthLabel(paidMonth)}`}
+        onBack={() => setPaidMonth(null)}
+        onHome={onHome}
+        onDelete={(i) => onDelete(monthInvs[i]._origIdx)}
+        onEdit={(i) => onEdit(monthInvs[i]._origIdx)}
+      />
+    );
+  }
+
   if (subFolder === "paid") return (
-    <InvoicesList
-      invoices={paidInvoices}
-      title="Paid Invoices"
-      onBack={() => setSubFolder(null)}
-      onHome={onHome}
-      onDelete={(i) => onDelete(paidInvoices[i]._origIdx)}
-      onEdit={(i) => onEdit(paidInvoices[i]._origIdx)}
-    />
+    <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: LIGHT_BG, fontFamily: "'Segoe UI',sans-serif" }}>
+      <Header title="Paid Invoices" onBack={() => { setPaidMonth(null); setSubFolder(null); }} />
+      <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
+        {paidMonthKeys.length === 0 ? (
+          <div style={{ textAlign: "center", color: "#aaa", marginTop: 60, fontSize: 15 }}>No paid invoices yet</div>
+        ) : paidMonthKeys.map(k => {
+          const list = paidByMonth[k];
+          const monthTotal = list.reduce((sum, inv) => sum + (Number(inv.total) || 0), 0);
+          return (
+            <div key={k} onClick={() => setPaidMonth(k)}
+              style={{ background: "#fff", borderRadius: 12, padding: "16px 18px", marginBottom: 12, boxShadow: "0 2px 10px rgba(0,0,0,0.07)", display: "flex", alignItems: "center", gap: 16, cursor: "pointer" }}
+              onMouseEnter={e => e.currentTarget.style.background = "#f0f4ff"}
+              onMouseLeave={e => e.currentTarget.style.background = "#fff"}>
+              <div style={{ width: 52, height: 52, borderRadius: 12, background: "#1a7a3a18", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0 }}>📁</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 15, color: "#222" }}>{paidMonthLabel(k)}</div>
+                <div style={{ fontSize: 13, color: "#888", marginTop: 2 }}>{list.length} invoice{list.length !== 1 ? "s" : ""} · £{monthTotal.toFixed(2)}</div>
+              </div>
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M6 3L12 9L6 15" stroke="#bbb" strokeWidth="2.2" strokeLinecap="round"/></svg>
+            </div>
+          );
+        })}
+      </div>
+      <BottomBar onHome={onHome} />
+    </div>
   );
 
   if (subFolder === "import") return (
@@ -5143,7 +5195,7 @@ function InvoicesScreen({ invoices, onBack, onHome, onDelete, onMarkPaid, onImpo
   const PAID_COLOR = "#1a7a3a";
   const subFolders = [
     { id: "all", label: "All Invoices", icon: "📄", count: unpaidInvoices.length, color: INV_GREEN, desc: "Unpaid & pending" },
-    { id: "paid", label: "Paid", icon: "✅", count: paidInvoices.length, color: PAID_COLOR, desc: "Fully paid invoices" },
+    { id: "paid", label: "Paid", icon: "✅", count: paidInvoices.length, color: PAID_COLOR, desc: "Fully paid · sorted into months" },
     { id: "import", label: "Import Invoice", icon: "📥", count: null, color: BLUE, desc: "Import a saved invoice" },
   ];
 
@@ -10048,7 +10100,7 @@ function App() {
     company={company}
     onCreateInvoice={(invData)=>{ setInvoices(prev=>[...prev, {...invData, company}]); alert("✅ Invoice saved to Invoices folder!"); }}
     onDeleteInvoice={(i)=>setInvoices(prev=>prev.filter((_,idx)=>idx!==i))}
-    onMarkPaid={(i)=>setInvoices(prev=>prev.map((inv,idx)=>idx===i ? {...inv, fullyPaid:true, paid:inv.total, outstanding:0} : inv))}
+    onMarkPaid={(i)=>setInvoices(prev=>prev.map((inv,idx)=>idx===i ? {...inv, fullyPaid:true, paid:inv.total, outstanding:0, paidAt:new Date().toISOString()} : inv))}
     quotes={quotes}
     onDeleteQuote={(i)=>setQuotes(prev=>prev.filter((_,idx)=>idx!==i))}
     onConvertQuoteToInvoice={(i)=>{ setQuoteToInvoiceDraft(quotes[i]); }}
