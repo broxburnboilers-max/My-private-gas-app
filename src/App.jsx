@@ -3708,8 +3708,9 @@ function InvoiceWizard({ sourceRecord, onSave, onClose, invoiceRecords, prefillD
   const [companyPostcode2, setCompanyPostcode2] = useState(pf.companyPostcode || activeProfile.companyPostcode);
   const [companyTel2, setCompanyTel2] = useState(pf.companyTel || activeProfile.companyTel);
   const [gasSafeNo2, setGasSafeNo2] = useState(pf.gasSafeNo || activeProfile.gasSafeNo);
-  const [issuedBy, setIssuedBy] = useState(pf.issuedBy || activeProfile.engineerName);
-  const [engineerId, setEngineerId] = useState(pf.engineerId || activeProfile.gasId);
+  const isTpcPrefill = pf.companyName === INVOICE_ISSUERS.tpc.companyName;
+  const [issuedBy, setIssuedBy] = useState(isTpcPrefill ? "" : (pf.issuedBy || activeProfile.engineerName));
+  const [engineerId, setEngineerId] = useState(isTpcPrefill ? "" : (pf.engineerId || activeProfile.gasId));
 
   const [showPDFPreview, setShowPDFPreview] = useState(false);
 
@@ -3722,6 +3723,9 @@ function InvoiceWizard({ sourceRecord, onSave, onClose, invoiceRecords, prefillD
     setCompanyPostcode2(from.companyPostcode);
     setCompanyTel2(from.companyTel);
     setGasSafeNo2(from.gasSafeNo);
+    // Trustpoint invoices carry no engineer name/ID ("Issued by" line is hidden).
+    setIssuedBy(key === "tpc" ? "" : COMPANY_PROFILES.wlg.engineerName);
+    setEngineerId(key === "tpc" ? "" : COMPANY_PROFILES.wlg.gasId);
     // Swap the bank/payment details in the notes to match the chosen company.
     setNotes(key === "tpc" ? INVOICE_ISSUERS.tpc.bankNotes : WLG_INVOICE_NOTES);
   };
