@@ -1750,21 +1750,6 @@ function HomeScreen({ onNew, onNewInvoice, onRecords, onSearch, onEmail, onGiEma
           <CircleBtn onClick={onSearch} label="Search & Renew">
             <svg width="52" height="52" viewBox="0 0 52 52" fill="none"><circle cx="22" cy="22" r="15" stroke={BLUE} strokeWidth="5"/><line x1="33" y1="33" x2="47" y2="47" stroke={BLUE} strokeWidth="5" strokeLinecap="round"/></svg>
           </CircleBtn>
-          <CircleBtn onClick={onEmail} label="Email Import">
-            <svg width="52" height="48" viewBox="0 0 52 48" fill="none"><rect x="2" y="6" width="48" height="36" rx="5" fill={BLUE}/><polyline points="2,6 26,28 50,6" fill="none" stroke="white" strokeWidth="3.5"/></svg>
-          </CircleBtn>
-          <CircleBtn onClick={onGiEmail} label="GI Email">
-            <svg width="52" height="48" viewBox="0 0 52 48" fill="none"><rect x="2" y="6" width="48" height="36" rx="5" fill="#1a7a7a"/><polyline points="2,6 26,28 50,6" fill="none" stroke="white" strokeWidth="3.5"/><text x="26" y="38" textAnchor="middle" fill="white" fontSize="11" fontWeight="bold" fontFamily="sans-serif">GI</text></svg>
-          </CircleBtn>
-          <CircleBtn onClick={onGwEmail} label="GW Email">
-            <svg width="52" height="48" viewBox="0 0 52 48" fill="none"><rect x="2" y="6" width="48" height="36" rx="5" fill="#b45309"/><polyline points="2,6 26,28 50,6" fill="none" stroke="white" strokeWidth="3.5"/><text x="26" y="38" textAnchor="middle" fill="white" fontSize="11" fontWeight="bold" fontFamily="sans-serif">GW</text></svg>
-          </CircleBtn>
-          <CircleBtn onClick={onGscEmail} label="GSC Email">
-            <svg width="52" height="48" viewBox="0 0 52 48" fill="none"><rect x="2" y="6" width="48" height="36" rx="5" fill={BLUE}/><polyline points="2,6 26,28 50,6" fill="none" stroke="white" strokeWidth="3.5"/><text x="26" y="38" textAnchor="middle" fill="white" fontSize="11" fontWeight="bold" fontFamily="sans-serif">GSC</text></svg>
-          </CircleBtn>
-          <CircleBtn onClick={onBsEmail} label="BS Email">
-            <svg width="52" height="48" viewBox="0 0 52 48" fill="none"><rect x="2" y="6" width="48" height="36" rx="5" fill="#1a3a8f"/><polyline points="2,6 26,28 50,6" fill="none" stroke="white" strokeWidth="3.5"/><text x="26" y="38" textAnchor="middle" fill="white" fontSize="11" fontWeight="bold" fontFamily="sans-serif">BS</text></svg>
-          </CircleBtn>
           <CircleBtn onClick={onReport} label="Reports">
             <svg width="52" height="52" viewBox="0 0 52 52" fill="none"><rect x="4" y="4" width="44" height="44" rx="6" fill={BLUE}/><rect x="12" y="28" width="6" height="16" rx="2" fill="white"/><rect x="23" y="18" width="6" height="26" rx="2" fill="white"/><rect x="34" y="10" width="6" height="34" rx="2" fill="white"/></svg>
           </CircleBtn>
@@ -1781,8 +1766,6 @@ const JOB_TYPES = [
   { label:"Gas Safety Certificate", icon:"📋" },
   { label:"Boiler Service", icon:"🔧" },
   { label:"Warning Notice", icon:"⚠️" },
-  { label:"Gas Works", icon:"🔩" },
-  { label:"Gas Isolation", icon:"🚫" },
   { label:"Benchmark Commissioning", icon:"🔥" },
   { label:"Invoice", icon:"💷" },
   { label:"Quote", icon:"📝" },
@@ -7009,8 +6992,6 @@ function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, 
     { id:"reminders", label:"Reminders Due", icon:"📬", count: dueCount, color:"#c00" },
     { id:"gsc", label:"Gas Safety Certificates", icon:"📋", count: gscCount, color: BLUE },
     { id:"bs", label:"Boiler Service Records", icon:"🔧", count: bsCount, color: "#1a3a8f" },
-    { id:"gw", label:"Gas Works", icon:"🔨", count: gwCount, color: "#b45309" },
-    { id:"gi", label:"Gas Isolation", icon:"🚫", count: giCount, color: "#1a7a7a" },
     { id:"bmk", label:"Benchmark Commissioning", icon:"🔥", count: bmkCount, color: "#6d9b3a" },
     { id:"wn", label:"Warning Notices", icon:"⚠️", count: wnCount, color: "#b91c1c" },
     { id:"inv", label:"Invoices", icon:"💰", count: invCount, color: INV_GREEN_DARK },
