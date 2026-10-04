@@ -7006,7 +7006,7 @@ function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, 
 
   const reportCount = (accountReports||[]).length;
   const folders = [
-    { id:"reminders", label:"Reminders Due", icon:"📬", count: dueCount, color:"#c00", desc: autoDueCount>0 ? `${autoDueCount} due in 30 days${pinnedCount>0?` · ${pinnedCount} pinned`:""}` : pinnedCount>0 ? `${pinnedCount} pinned` : "None due" },
+    { id:"reminders", label:"Reminders Due", icon:"📬", count: dueCount, color:"#c00" },
     { id:"gsc", label:"Gas Safety Certificates", icon:"📋", count: gscCount, color: BLUE },
     { id:"bs", label:"Boiler Service Records", icon:"🔧", count: bsCount, color: "#1a3a8f" },
     { id:"gw", label:"Gas Works", icon:"🔨", count: gwCount, color: "#b45309" },
@@ -7038,9 +7038,11 @@ function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, 
             </div>
             <div style={{ flex:1 }}>
               <div style={{ fontWeight:700, fontSize:15, color:"#222" }}>{f.label}</div>
-              <div style={{ fontSize:13, color: f.id==="reminders" && f.count>0 ? "#c00" : "#888", marginTop:2 }}>
+              {f.id!=="reminders" && (
+              <div style={{ fontSize:13, color:"#888", marginTop:2 }}>
                 {f.desc || `${f.count} record${f.count!==1?"s":""}`}
               </div>
+              )}
             </div>
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M6 3L12 9L6 15" stroke="#bbb" strokeWidth="2.2" strokeLinecap="round"/></svg>
           </div>
