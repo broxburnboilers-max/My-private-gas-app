@@ -7030,11 +7030,7 @@ function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, 
             onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
             <div style={{ width:52, height:52, borderRadius:12, background:`${f.color}18`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:26, flexShrink:0, position:"relative" }}>
               {f.icon}
-              {f.id==="reminders" && dueCount>0 && (
-                <div style={{ position:"absolute", top:-6, right:-6, background:"#c00", color:"#fff", borderRadius:"50%", minWidth:20, height:20, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:700, padding:"0 3px" }}>
-                  {dueCount}
-                </div>
-              )}
+              
             </div>
             <div style={{ flex:1 }}>
               <div style={{ fontWeight:700, fontSize:15, color:"#222" }}>{f.label}</div>
