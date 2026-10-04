@@ -2470,6 +2470,48 @@ function StepFileRef({ data, onChange, onNext, onBack, onHome }) {
 
 // ── Google Contacts Picker ────────────────────────────────────────────────────
 // Replace this with your own Google OAuth Client ID from console.cloud.google.com
+// Phones (especially Android) often put the whole formatted address -
+// street, town, postcode and country - into addressLine[0]. Split it up and
+// strip out the town / region / postcode / country so they only appear in
+// their own fields instead of being duplicated on Address line 1.
+function parsePhoneContactAddress(addr) {
+  const norm = (v) => String(v || "").replace(/\s+/g, " ").trim();
+  const key = (v) => norm(v).toLowerCase().replace(/[^a-z0-9]/g, "");
+  const city = norm(addr.city);
+  const region = norm(addr.region);
+  const country = norm(addr.country);
+  const ukPc = /\b([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\b/i;
+  const raw = [].concat(addr.addressLine || [], addr.streetAddress ? [addr.streetAddress] : []).join("\n");
+  let postcode = norm(addr.postalCode);
+  if (!postcode) { const m = raw.match(ukPc); if (m) postcode = m[1].toUpperCase(); }
+  const known = [city, region, country, postcode].filter(Boolean);
+  const knownKeys = new Set(known.map(key));
+  const esc = (v) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const parts = [];
+  for (let line of raw.split(/[\n\r,]+/)) {
+    line = norm(line);
+    if (!line) continue;
+    // Remove any known town / region / postcode / country text inside the line
+    for (const k of known) line = line.replace(new RegExp("(^|\\s)" + esc(k) + "(?=\\s|$)", "ig"), " ");
+    line = line.replace(ukPc, " ");
+    // Also catch a town stuck onto the end of the street with no space
+    for (const k of [city, region, country].filter(Boolean)) {
+      const t = norm(line);
+      if (t.length > k.length && t.toLowerCase().endsWith(k.toLowerCase())) line = t.slice(0, t.length - k.length);
+    }
+    line = norm(line).replace(/^[,\s]+|[,\s]+$/g, "");
+    if (!line || knownKeys.has(key(line))) continue;
+    if (/^(uk|united kingdom|gb|great britain|england|scotland|wales)$/i.test(line)) continue;
+    if (!parts.some(p => key(p) === key(line))) parts.push(line);
+  }
+  return {
+    addr1: parts[0] || "",
+    addr2: city || parts[1] || "",
+    addr3: region || (city ? parts[1] : parts[2]) || "",
+    postcode,
+  };
+}
+
 // v3 - Native phone contacts via Contact Picker API
 async function openPhoneContacts(onSelect) {
   if (!("contacts" in navigator && "ContactsManager" in window)) {
@@ -2481,14 +2523,12 @@ async function openPhoneContacts(onSelect) {
     if (!results || results.length === 0) return "cancelled";
     const c = results[0];
     const addr = c.address?.[0] || {};
+    const parsed = parsePhoneContactAddress(addr);
     onSelect({
       name: c.name?.[0] || "",
       tel: c.tel?.[0] || "",
       email: c.email?.[0] || "",
-      addr1: addr.addressLine?.[0] || addr.streetAddress || "",
-      addr2: addr.city || addr.addressLine?.[1] || "",
-      addr3: addr.region || addr.addressLine?.[2] || "",
-      postcode: addr.postalCode || "",
+      ...parsed,
     });
     return "ok";
   } catch(e) {
