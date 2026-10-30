@@ -2512,29 +2512,172 @@ function parsePhoneContactAddress(addr) {
   };
 }
 
-// v3 - Native phone contacts via Contact Picker API
+// v4 - Native phone contacts via Contact Picker API (Android 17 safe)
+// Android 17 replaced Chrome's own contact list with the new system
+// "Share a contact" picker. On some phones that picker hands the page back
+// an empty result, a result split over several entries, or values in a
+// different shape. We now merge + normalise everything we get back, and if
+// nothing usable arrives we open a "paste details" box instead of silently
+// doing nothing.
+function _pcFirst(v) {
+  const list = Array.isArray(v) ? v : (v == null ? [] : [v]);
+  for (const item of list) {
+    if (item == null) continue;
+    if (typeof item === "string") { if (item.trim()) return item.trim(); continue; }
+    if (typeof item === "object") {
+      const s = item.value || item.number || item.address || item.displayName || item.name || "";
+      if (String(s).trim()) return String(s).trim();
+    }
+  }
+  return "";
+}
+function _pcFirstAddress(v) {
+  const list = Array.isArray(v) ? v : (v == null ? [] : [v]);
+  for (const a of list) {
+    if (!a) continue;
+    if (typeof a === "string") { if (a.trim()) return { addressLine: [a] }; continue; }
+    // ContactAddress objects expose getters - copy them into a plain object
+    const o = {
+      addressLine: Array.isArray(a.addressLine) ? a.addressLine : (a.addressLine ? [a.addressLine] : []),
+      streetAddress: a.streetAddress || "",
+      city: a.city || a.locality || "",
+      region: a.region || "",
+      postalCode: a.postalCode || a.postcode || "",
+      country: a.country || "",
+    };
+    if (o.addressLine.length || o.streetAddress || o.city || o.postalCode) return o;
+  }
+  return {};
+}
+function parsePastedContact(text) {
+  const out = { name:"", tel:"", email:"", addr1:"", addr2:"", addr3:"", postcode:"" };
+  if (!text || !String(text).trim()) return out;
+  const t = String(text).replace(/\r/g, "");
+  // vCard (.vcf) text
+  if (/BEGIN:VCARD/i.test(t)) {
+    const unfolded = t.replace(/\n[ \t]/g, "");
+    const get = (k) => { const m = unfolded.match(new RegExp("^" + k + "(?:;[^:\\n]*)?:(.*)$", "im")); return m ? m[1].trim() : ""; };
+    out.name = get("FN") || get("N").split(";").filter(Boolean).reverse().join(" ");
+    out.tel = get("TEL"); out.email = get("EMAIL");
+    const adr = get("ADR");
+    if (adr) {
+      const p = adr.split(";").map(s => s.replace(/\\n/g, "\n").replace(/\\,/g, ",").trim());
+      // ADR: pobox;ext;street;locality;region;postcode;country
+      Object.assign(out, parsePhoneContactAddress({ addressLine: [p[2] || ""], city: p[3] || "", region: p[4] || "", postalCode: p[5] || "", country: p[6] || "" }));
+    }
+    return out;
+  }
+  const emailRe = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
+  const telRe = /(\+?44\s?\(?0?\)?|0)(\s?\d){9,10}/;
+  const pcRe = /\b([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\b/i;
+  let lines = t.split(/\n+/).map(s => s.trim()).filter(Boolean);
+  if (lines.length === 1) lines = lines[0].split(/\s*,\s*/).filter(Boolean);
+  const addrLines = [];
+  for (let line of lines) {
+    const em = line.match(emailRe); if (em && !out.email) { out.email = em[0]; line = line.replace(em[0], "").trim(); }
+    const tm = line.match(telRe); if (tm && !out.tel) { out.tel = tm[0].replace(/\s+/g, " ").trim(); line = line.replace(tm[0], "").trim(); }
+    line = line.replace(/^(tel|phone|mobile|email|e-mail|name|address)\s*[:\-]\s*/i, "").trim();
+    if (!line) continue;
+    if (!out.name && !/\d/.test(line) && !pcRe.test(line) && addrLines.length === 0) { out.name = line; continue; }
+    // "Alan Cain 5 Murieston Valley ..." - name is the text before the house number
+    if (!out.name && addrLines.length === 0) {
+      const nm = line.match(/^([A-Za-z][A-Za-z.'\- ]+?)\s+(\d.*)$/);
+      if (nm && nm[1].trim().split(/\s+/).length <= 4) { out.name = nm[1].trim(); line = nm[2].trim(); }
+    }
+    addrLines.push(line);
+  }
+  if (addrLines.length) {
+    let joined = addrLines.join("\n");
+    let city = "";
+    // Single line with a postcode: take the town as the word(s) just before the postcode
+    if (addrLines.length === 1 && !/,/.test(joined)) {
+      const m = joined.match(/^(.*?)\s+((?:(?:East|West|Mid|North|South|New|Old|Upper|Lower)\s+)?[A-Za-z'\-]+)\s+([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\s*$/i);
+      if (m && /\d/.test(m[1])) { joined = m[1]; city = m[2]; }
+    }
+    Object.assign(out, parsePhoneContactAddress({ addressLine: [joined], city, postalCode: (t.match(pcRe) || [])[1] ? t.match(pcRe)[1].toUpperCase() : "" }));
+  }
+  return out;
+}
+function openContactPasteFallback(message, onSelect) {
+  if (typeof document === "undefined") return;
+  const old = document.getElementById("pc-fallback"); if (old) old.remove();
+  const wrap = document.createElement("div");
+  wrap.id = "pc-fallback";
+  wrap.setAttribute("style", "position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;font-family:'Segoe UI',sans-serif");
+  wrap.innerHTML =
+    '<div style="background:#fff;border-radius:14px;max-width:420px;width:100%;padding:18px;box-shadow:0 10px 30px rgba(0,0,0,0.3)">' +
+      '<div style="font-weight:700;font-size:17px;color:#1a2b4a;margin-bottom:6px">Add contact details</div>' +
+      '<div id="pc-msg" style="font-size:13.5px;color:#555;margin-bottom:12px;line-height:1.4"></div>' +
+      '<button id="pc-paste" style="width:100%;padding:11px;border:none;border-radius:8px;background:#2a52d4;color:#fff;font-weight:600;font-size:14px;margin-bottom:8px">Paste from clipboard</button>' +
+      '<label style="display:block;width:100%;box-sizing:border-box;text-align:center;padding:10px;border:1.5px solid #2a52d4;border-radius:8px;color:#2a52d4;font-weight:600;font-size:14px;margin-bottom:10px">Open contact file (.vcf)<input id="pc-file" type="file" accept=".vcf,text/vcard,text/x-vcard" style="display:none"></label>' +
+      '<textarea id="pc-text" rows="5" placeholder="Or type/paste here:\nAlan Cain\n5 Murieston Valley, Livingston EH54 9HB\n07715 672609\nalan@example.com" style="width:100%;box-sizing:border-box;border:1px solid #ccd;border-radius:8px;padding:10px;font-size:14px;font-family:inherit"></textarea>' +
+      '<div style="display:flex;gap:8px;margin-top:12px">' +
+        '<button id="pc-cancel" style="flex:1;padding:11px;border:1px solid #ccd;border-radius:8px;background:#fff;font-size:14px">Cancel</button>' +
+        '<button id="pc-use" style="flex:1;padding:11px;border:none;border-radius:8px;background:#1f9d55;color:#fff;font-weight:600;font-size:14px">Use details</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(wrap);
+  wrap.querySelector("#pc-msg").textContent = message;
+  const ta = wrap.querySelector("#pc-text");
+  const close = () => wrap.remove();
+  wrap.querySelector("#pc-cancel").onclick = close;
+  wrap.querySelector("#pc-paste").onclick = async () => {
+    try { const txt = await navigator.clipboard.readText(); if (txt) ta.value = txt; else ta.focus(); }
+    catch { ta.focus(); alert("Couldn't read the clipboard - long-press in the box and choose Paste."); }
+  };
+  wrap.querySelector("#pc-file").onchange = async (e) => {
+    const f = e.target.files && e.target.files[0]; if (f) ta.value = await f.text();
+  };
+  wrap.querySelector("#pc-use").onclick = () => {
+    const c = parsePastedContact(ta.value);
+    if (!c.name && !c.tel && !c.email && !c.addr1 && !c.postcode) { alert("No details found - please paste or type them in the box."); return; }
+    close();
+    onSelect(c);
+  };
+}
+
 async function openPhoneContacts(onSelect) {
   if (!("contacts" in navigator && "ContactsManager" in window)) {
     return "unsupported";
   }
+  let results;
   try {
     const props = ["name", "tel", "email", "address"];
-    const results = await navigator.contacts.select(props, { multiple: false });
-    if (!results || results.length === 0) return "cancelled";
-    const c = results[0];
-    const addr = c.address?.[0] || {};
-    const parsed = parsePhoneContactAddress(addr);
-    onSelect({
-      name: c.name?.[0] || "",
-      tel: c.tel?.[0] || "",
-      email: c.email?.[0] || "",
-      ...parsed,
-    });
-    return "ok";
+    results = await navigator.contacts.select(props, { multiple: false });
   } catch(e) {
-    if (e.name === "SecurityError" || e.name === "InvalidStateError") return "blocked";
-    return "error";
+    if (e && e.name === "SecurityError") return "blocked";
+    try { localStorage.setItem("lastContactPickError", String(e && (e.name + ": " + e.message))); } catch {}
+    openContactPasteFallback("Your phone couldn't open its contacts for the app (" + ((e && e.name) || "error") + "). Copy the contact's details and paste them below.", onSelect);
+    return "fallback";
   }
+  try { localStorage.setItem("lastContactPick", JSON.stringify(results)); } catch {}
+  if (!results || results.length === 0) {
+    openContactPasteFallback("Your phone didn't pass the contact's details back to the app. This can happen on Android 17 - check Names, Addresses, Email and Phone are all ticked on the \"Share a contact\" screen and try again, or copy the details and paste them below.", onSelect);
+    return "fallback";
+  }
+  // Android 17 can split one contact over several entries - merge them.
+  const merged = { name: [], tel: [], email: [], address: [] };
+  for (const r of results) {
+    if (!r) continue;
+    for (const k of Object.keys(merged)) {
+      const v = r[k];
+      if (Array.isArray(v)) merged[k].push(...v); else if (v != null) merged[k].push(v);
+    }
+  }
+  let parsed = { addr1:"", addr2:"", addr3:"", postcode:"" };
+  try { parsed = parsePhoneContactAddress(_pcFirstAddress(merged.address)); } catch {}
+  const contact = {
+    name: _pcFirst(merged.name),
+    tel: _pcFirst(merged.tel),
+    email: _pcFirst(merged.email),
+    ...parsed,
+  };
+  if (!contact.name && !contact.tel && !contact.email && !contact.addr1 && !contact.postcode) {
+    openContactPasteFallback("Your phone returned the contact but without any details (this is an Android 17 change). Copy the details and paste them below.", onSelect);
+    return "fallback";
+  }
+  onSelect(contact);
+  return "ok";
 }
 
 
