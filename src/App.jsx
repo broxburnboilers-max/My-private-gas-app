@@ -2719,10 +2719,166 @@ if (typeof window !== "undefined") {
   window.addEventListener("load", () => setTimeout(_pcSharedToast, 600));
 }
 
-async function openPhoneContacts(onSelect) {
-  if (!("contacts" in navigator && "ContactsManager" in window)) {
-    return "unsupported";
+// ── Google Contacts (bypasses the broken Android 17 phone picker) ────────────
+// Signs in with Google in a popup (same OAuth client as Calendar), loads the
+// account's contacts via the People API, and shows a searchable list.
+const GCON_SCOPE = "https://www.googleapis.com/auth/contacts.readonly";
+function _gconCompany() { try { return localStorage.getItem("gsc_active_company") || "wlg"; } catch { return "wlg"; } }
+function _gconTokenKey() { return "gcon_token_" + _gconCompany(); }
+function _gconToken() {
+  try { const t = JSON.parse(localStorage.getItem(_gconTokenKey()) || "null"); if (t && Date.now() < t.expires_at) return t.access_token; } catch {}
+  return null;
+}
+function _gconSignIn() {
+  return new Promise((resolve, reject) => {
+    const key = _gconCompany();
+    const profile = (typeof companyProfile === "function" ? companyProfile(key) : {}) || {};
+    const params = new URLSearchParams({
+      client_id: GCAL_CLIENT_ID,
+      redirect_uri: window.location.origin + "/",
+      response_type: "token",
+      scope: GCON_SCOPE,
+      include_granted_scopes: "true",
+      state: "gcon_auth:" + key,
+      login_hint: profile.calendarEmail || profile.companyEmail || "",
+    });
+    const url = "https://accounts.google.com/o/oauth2/v2/auth?" + params.toString();
+    try { localStorage.removeItem("gcon_token_" + key); localStorage.removeItem("gcon_auth_error"); } catch {}
+    const pop = window.open(url, "gcon_auth", "width=480,height=640");
+    if (!pop) { reject(new Error("popup")); return; }
+    const started = Date.now();
+    const timer = setInterval(() => {
+      const tok = _gconToken();
+      let err = null; try { err = localStorage.getItem("gcon_auth_error"); } catch {}
+      if (tok) { clearInterval(timer); try { pop.close(); } catch {} resolve(tok); }
+      else if (err) { clearInterval(timer); reject(new Error(err)); }
+      else if (Date.now() - started > 5 * 60e3) { clearInterval(timer); reject(new Error("timeout")); }
+    }, 500);
+  });
+}
+async function _gconLoad(token) {
+  const out = [];
+  let pageToken = "";
+  for (let i = 0; i < 20; i++) {
+    const u = new URL("https://people.googleapis.com/v1/people/me/connections");
+    u.searchParams.set("pageSize", "1000");
+    u.searchParams.set("personFields", "names,phoneNumbers,emailAddresses,addresses");
+    u.searchParams.set("sortOrder", "FIRST_NAME_ASCENDING");
+    if (pageToken) u.searchParams.set("pageToken", pageToken);
+    const r = await fetch(u, { headers: { Authorization: "Bearer " + token } });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const e = new Error((j.error && j.error.message) || ("HTTP " + r.status));
+      e.status = r.status;
+      const link = JSON.stringify(j).match(/https:\/\/console\.developers\.google\.com\/apis\/api\/people\.googleapis\.com[^"\\\s]*/);
+      if (link) e.enableUrl = link[0];
+      throw e;
+    }
+    for (const p of j.connections || []) {
+      const name = (p.names && p.names[0] && p.names[0].displayName) || "";
+      const tel = (p.phoneNumbers && p.phoneNumbers[0] && (p.phoneNumbers[0].value || p.phoneNumbers[0].canonicalForm)) || "";
+      const email = (p.emailAddresses && p.emailAddresses[0] && p.emailAddresses[0].value) || "";
+      const a = (p.addresses && p.addresses[0]) || null;
+      if (!name && !tel && !email) continue;
+      out.push({ name, tel, email, a: a ? {
+        addressLine: [a.streetAddress, a.extendedAddress].filter(Boolean).length ? [a.streetAddress, a.extendedAddress].filter(Boolean) : (a.formattedValue ? [a.formattedValue] : []),
+        city: a.city || "", region: a.region || "", postalCode: a.postalCode || "", country: a.country || "",
+      } : null });
+    }
+    pageToken = j.nextPageToken || "";
+    if (!pageToken) break;
   }
+  try { localStorage.setItem("gcon_cache_" + _gconCompany(), JSON.stringify({ t: Date.now(), list: out })); } catch {}
+  return out;
+}
+function _gconCached() {
+  try { const c = JSON.parse(localStorage.getItem("gcon_cache_" + _gconCompany()) || "null"); if (c && Date.now() - c.t < 12 * 3600e3) return c.list; } catch {}
+  return null;
+}
+function _gconToContact(x) {
+  let parsed = { addr1:"", addr2:"", addr3:"", postcode:"" };
+  try { if (x.a) parsed = parsePhoneContactAddress(x.a); } catch {}
+  return { name: x.name, tel: x.tel, email: x.email, ...parsed };
+}
+function openGoogleContactsPicker(onSelect) {
+  const old = document.getElementById("gcon-modal"); if (old) old.remove();
+  const wrap = document.createElement("div");
+  wrap.id = "gcon-modal";
+  wrap.setAttribute("style", "position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:99999;display:flex;align-items:flex-start;justify-content:center;padding:16px;font-family:'Segoe UI',sans-serif");
+  wrap.innerHTML =
+    '<div style="background:#fff;border-radius:14px;max-width:440px;width:100%;max-height:calc(100vh - 32px);display:flex;flex-direction:column;box-shadow:0 10px 30px rgba(0,0,0,0.3)">' +
+      '<div style="padding:14px 16px 8px;display:flex;align-items:center;justify-content:space-between"><div style="font-weight:700;font-size:17px;color:#1a2b4a">Choose a contact</div><button id="gcon-x" style="border:none;background:none;font-size:22px;color:#666;padding:0 4px">&times;</button></div>' +
+      '<div style="padding:0 16px 8px"><input id="gcon-q" type="search" placeholder="Search name, phone or street" style="width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid #ccd;border-radius:8px;font-size:15px;font-family:inherit"></div>' +
+      '<div id="gcon-status" style="padding:4px 16px;font-size:13px;color:#555"></div>' +
+      '<div id="gcon-list" style="overflow-y:auto;flex:1;min-height:80px;padding:0 8px 8px"></div>' +
+      '<div style="padding:10px 16px;border-top:1px solid #eee;display:flex;gap:8px">' +
+        '<button id="gcon-refresh" style="flex:1;padding:10px;border:1px solid #ccd;border-radius:8px;background:#fff;font-size:13px">Refresh contacts</button>' +
+        '<button id="gcon-other" style="flex:1;padding:10px;border:1px solid #ccd;border-radius:8px;background:#fff;font-size:13px">Paste / type instead</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(wrap);
+  const q = wrap.querySelector("#gcon-q"), list = wrap.querySelector("#gcon-list"), status = wrap.querySelector("#gcon-status");
+  const close = () => wrap.remove();
+  wrap.querySelector("#gcon-x").onclick = close;
+  wrap.querySelector("#gcon-other").onclick = () => { close(); openContactPasteFallback("Paste or type the contact's details below.", onSelect); };
+  let all = [];
+  const norm = (v) => String(v || "").toLowerCase().replace(/\s+/g, "");
+  const render = () => {
+    const term = norm(q.value);
+    const hits = (term ? all.filter(x => norm(x.name + " " + x.tel + " " + x.email + " " + (x.a ? x.a.addressLine.join(" ") + " " + x.a.postalCode : "")).includes(term)) : all).slice(0, 80);
+    list.innerHTML = "";
+    if (all.length && !hits.length) { list.innerHTML = '<div style="padding:14px 8px;color:#888;font-size:14px">No matching contacts.</div>'; return; }
+    for (const x of hits) {
+      const row = document.createElement("button");
+      row.setAttribute("style", "display:block;width:100%;text-align:left;border:none;background:none;padding:10px 8px;border-bottom:1px solid #f0f0f0;font-family:inherit");
+      const n = document.createElement("div"); n.setAttribute("style", "font-size:15px;color:#1a2b4a;font-weight:600"); n.textContent = x.name || x.tel || x.email;
+      const sub = document.createElement("div"); sub.setAttribute("style", "font-size:12.5px;color:#777;margin-top:2px");
+      sub.textContent = [x.tel, x.a ? [x.a.addressLine[0], x.a.postalCode].filter(Boolean).join(", ") : ""].filter(Boolean).join(" · ");
+      row.appendChild(n); row.appendChild(sub);
+      row.onclick = () => { close(); onSelect(_gconToContact(x)); };
+      list.appendChild(row);
+    }
+  };
+  q.oninput = render;
+  const showSignIn = (msg) => {
+    status.textContent = msg || "";
+    list.innerHTML = "";
+    const b = document.createElement("button");
+    b.setAttribute("style", "display:block;width:calc(100% - 16px);margin:10px 8px;padding:13px;border:none;border-radius:8px;background:#2a52d4;color:#fff;font-weight:600;font-size:15px");
+    b.textContent = "Sign in with Google to load contacts";
+    b.onclick = () => load(true);
+    list.appendChild(b);
+  };
+  const load = async (forceSignIn) => {
+    try {
+      let tok = _gconToken();
+      if (!tok || forceSignIn === true) {
+        status.textContent = "Signing in to Google... (finish in the window that opens)";
+        tok = await _gconSignIn();
+      }
+      status.textContent = "Loading your contacts...";
+      all = await _gconLoad(tok);
+      status.textContent = all.length + " contacts" + (all.length ? "" : " found in this Google account");
+      render(); q.focus();
+    } catch (e) {
+      if (e.status === 401) { showSignIn("Your Google sign-in expired."); return; }
+      if (e.enableUrl || /has not been used|is disabled/i.test(e.message || "")) {
+        status.innerHTML = 'Google Contacts access needs switching on once for this app. <a href="' + (e.enableUrl || "https://console.developers.google.com/apis/api/people.googleapis.com/overview?project=554370268319") + '" target="_blank" style="color:#2a52d4;font-weight:600">Tap here, press Enable</a>, then tap Refresh contacts.';
+        return;
+      }
+      if (e.message === "popup") { showSignIn("Your browser blocked the sign-in window - tap the button below."); return; }
+      if (e.message === "access_denied") { showSignIn("Google sign-in was cancelled. Make sure you tick 'See your contacts' when asked."); return; }
+      showSignIn("Couldn't load contacts (" + (e.message || "error") + ").");
+    }
+  };
+  wrap.querySelector("#gcon-refresh").onclick = () => load(false);
+  const cached = _gconCached();
+  if (cached && cached.length) { all = cached; status.textContent = all.length + " contacts"; render(); setTimeout(() => q.focus(), 50); }
+  else if (_gconToken()) load(false);
+  else showSignIn("Load the contacts saved in your Google account (one-time sign-in).");
+}
+
+async function openPhoneContacts(onSelect) {
   // A contact shared from the phone's Contacts app (Share -> Gas App) wins.
   try {
     const pend = JSON.parse(localStorage.getItem("pendingSharedContact") || "null");
@@ -2732,6 +2888,12 @@ async function openPhoneContacts(onSelect) {
       if (c.name || c.tel || c.email || c.addr1 || c.postcode) { _pcLog(["shared"], "ok"); onSelect(c); return "ok"; }
     } else if (pend) localStorage.removeItem("pendingSharedContact");
   } catch {}
+  // Android 17 + Chrome's phone contact picker returns nothing, so use the
+  // in-app Google Contacts list instead (works on any phone/browser).
+  if (true) { openGoogleContactsPicker(onSelect); return "fallback"; }
+  if (!("contacts" in navigator && "ContactsManager" in window)) {
+    return "unsupported";
+  }
   // If a smaller set of fields is known to work on this phone, use it.
   let props = ["name", "tel", "email", "address"];
   // (remembered for 7 days so a future Android/Chrome fix gets picked up again)

@@ -2,6 +2,21 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 
+// Google Contacts sign-in popup lands back here: save the token and close.
+if (location.hash.includes('state=gcon_auth')) {
+  const hp = new URLSearchParams(location.hash.slice(1));
+  const key = (hp.get('state') || '').split(':')[1] || 'wlg';
+  if (hp.get('access_token')) {
+    localStorage.setItem('gcon_token_' + key, JSON.stringify({ access_token: hp.get('access_token'), expires_at: Date.now() + (parseInt(hp.get('expires_in') || '3600') - 60) * 1000 }));
+  } else if (hp.get('error')) {
+    localStorage.setItem('gcon_auth_error', hp.get('error'));
+  }
+  history.replaceState(null, '', '/');
+  try { window.close(); } catch (e) {}
+  document.body.innerHTML = '<div style="font-family:Segoe UI,sans-serif;padding:40px 24px;text-align:center;font-size:17px">Signed in to Google.<br><br>You can close this tab and go back to the job.</div>';
+  throw new Error('gcon popup done');
+}
+
 // Register the service worker (used for "Share contact -> Gas App")
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
