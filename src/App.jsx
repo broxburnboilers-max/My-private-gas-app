@@ -2608,19 +2608,51 @@ function openContactPasteFallback(message, onSelect) {
     '<div style="background:#fff;border-radius:14px;max-width:420px;width:100%;padding:18px;box-shadow:0 10px 30px rgba(0,0,0,0.3)">' +
       '<div style="font-weight:700;font-size:17px;color:#1a2b4a;margin-bottom:6px">Add contact details</div>' +
       '<div id="pc-msg" style="font-size:13.5px;color:#555;margin-bottom:12px;line-height:1.4"></div>' +
+      '<button id="pc-retry" style="width:100%;padding:11px;border:1.5px solid #e08a00;border-radius:8px;background:#fff7e6;color:#9a5b00;font-weight:600;font-size:14px;margin-bottom:8px">Try phone contacts again (name, phone &amp; email)</button>' +
       '<button id="pc-paste" style="width:100%;padding:11px;border:none;border-radius:8px;background:#2a52d4;color:#fff;font-weight:600;font-size:14px;margin-bottom:8px">Paste from clipboard</button>' +
       '<label style="display:block;width:100%;box-sizing:border-box;text-align:center;padding:10px;border:1.5px solid #2a52d4;border-radius:8px;color:#2a52d4;font-weight:600;font-size:14px;margin-bottom:10px">Open contact file (.vcf)<input id="pc-file" type="file" accept=".vcf,text/vcard,text/x-vcard" style="display:none"></label>' +
-      '<textarea id="pc-text" rows="5" placeholder="Or type/paste here:\nAlan Cain\n5 Murieston Valley, Livingston EH54 9HB\n07715 672609\nalan@example.com" style="width:100%;box-sizing:border-box;border:1px solid #ccd;border-radius:8px;padding:10px;font-size:14px;font-family:inherit"></textarea>' +
+      '<textarea id="pc-text" rows="5" placeholder="Or type/paste here, e.g.\nAlan Cain\n5 Murieston Valley, Livingston EH54 9HB\n07715 672609\nalan@example.com" style="width:100%;box-sizing:border-box;border:1px solid #ccd;border-radius:8px;padding:10px;font-size:14px;font-family:inherit"></textarea>' +
       '<div style="display:flex;gap:8px;margin-top:12px">' +
         '<button id="pc-cancel" style="flex:1;padding:11px;border:1px solid #ccd;border-radius:8px;background:#fff;font-size:14px">Cancel</button>' +
         '<button id="pc-use" style="flex:1;padding:11px;border:none;border-radius:8px;background:#1f9d55;color:#fff;font-weight:600;font-size:14px">Use details</button>' +
       '</div>' +
+      '<div id="pc-diag" style="margin-top:10px;font-size:10.5px;color:#999;word-break:break-all"></div>' +
     '</div>';
   document.body.appendChild(wrap);
   wrap.querySelector("#pc-msg").textContent = message;
   const ta = wrap.querySelector("#pc-text");
   const close = () => wrap.remove();
   wrap.querySelector("#pc-cancel").onclick = close;
+  const diag = wrap.querySelector("#pc-diag");
+  const showDiag = () => {
+    let log = []; try { log = JSON.parse(localStorage.getItem("contactPickLog") || "[]"); } catch {}
+    const cv = (navigator.userAgent.match(/Chrome\/([\d.]+)/) || [])[1] || "?";
+    const av = (navigator.userAgent.match(/Android ([\d.]+)/) || [])[1] || "?";
+    diag.textContent = "Info: Android " + av + ", Chrome " + cv + " | " + log.slice(-4).map(l => l.props + "=" + l.res).join(" ; ");
+  };
+  showDiag();
+  // Each tap is a fresh user gesture, so we can ask the phone again with fewer fields.
+  const retrySets = [["name","tel","email"], ["name","tel"], ["name"], ["tel"]];
+  let retryIdx = 0;
+  const retryBtn = wrap.querySelector("#pc-retry");
+  const labelFor = (ps) => "Try phone contacts again (" + ps.join(", ").replace("tel","phone") + " only)";
+  retryBtn.textContent = labelFor(retrySets[0]);
+  retryBtn.onclick = async () => {
+    const ps = retrySets[retryIdx];
+    let res;
+    try { res = await navigator.contacts.select(ps, { multiple: false }); }
+    catch (e) { _pcLog(ps, "error " + (e && e.name)); showDiag(); res = null; }
+    if (res) _pcLog(ps, res.length ? "ok" : "empty", res);
+    const c = res && res.length ? _pcBuild(res) : null;
+    if (c) {
+      try { localStorage.setItem("contactPickProps", JSON.stringify({ props: ps, t: Date.now() })); } catch {}
+      close(); onSelect(c); return;
+    }
+    showDiag();
+    retryIdx = Math.min(retryIdx + 1, retrySets.length - 1);
+    retryBtn.textContent = labelFor(retrySets[retryIdx]);
+    wrap.querySelector("#pc-msg").textContent = "Still nothing came back from your phone. Try the button again with fewer details, or paste the details below.";
+  };
   wrap.querySelector("#pc-paste").onclick = async () => {
     try { const txt = await navigator.clipboard.readText(); if (txt) ta.value = txt; else ta.focus(); }
     catch { ta.focus(); alert("Couldn't read the clipboard - long-press in the box and choose Paste."); }
@@ -2636,28 +2668,17 @@ function openContactPasteFallback(message, onSelect) {
   };
 }
 
-async function openPhoneContacts(onSelect) {
-  if (!("contacts" in navigator && "ContactsManager" in window)) {
-    return "unsupported";
-  }
-  let results;
+function _pcLog(props, res, raw) {
   try {
-    const props = ["name", "tel", "email", "address"];
-    results = await navigator.contacts.select(props, { multiple: false });
-  } catch(e) {
-    if (e && e.name === "SecurityError") return "blocked";
-    try { localStorage.setItem("lastContactPickError", String(e && (e.name + ": " + e.message))); } catch {}
-    openContactPasteFallback("Your phone couldn't open its contacts for the app (" + ((e && e.name) || "error") + "). Copy the contact's details and paste them below.", onSelect);
-    return "fallback";
-  }
-  try { localStorage.setItem("lastContactPick", JSON.stringify(results)); } catch {}
-  if (!results || results.length === 0) {
-    openContactPasteFallback("Your phone didn't pass the contact's details back to the app. This can happen on Android 17 - check Names, Addresses, Email and Phone are all ticked on the \"Share a contact\" screen and try again, or copy the details and paste them below.", onSelect);
-    return "fallback";
-  }
+    const log = JSON.parse(localStorage.getItem("contactPickLog") || "[]");
+    log.push({ t: new Date().toISOString(), props: props.join("+"), res, raw: raw ? JSON.stringify(raw).slice(0, 400) : "" });
+    localStorage.setItem("contactPickLog", JSON.stringify(log.slice(-20)));
+  } catch {}
+}
+function _pcBuild(results) {
   // Android 17 can split one contact over several entries - merge them.
   const merged = { name: [], tel: [], email: [], address: [] };
-  for (const r of results) {
+  for (const r of results || []) {
     if (!r) continue;
     for (const k of Object.keys(merged)) {
       const v = r[k];
@@ -2666,20 +2687,41 @@ async function openPhoneContacts(onSelect) {
   }
   let parsed = { addr1:"", addr2:"", addr3:"", postcode:"" };
   try { parsed = parsePhoneContactAddress(_pcFirstAddress(merged.address)); } catch {}
-  const contact = {
-    name: _pcFirst(merged.name),
-    tel: _pcFirst(merged.tel),
-    email: _pcFirst(merged.email),
-    ...parsed,
-  };
-  if (!contact.name && !contact.tel && !contact.email && !contact.addr1 && !contact.postcode) {
-    openContactPasteFallback("Your phone returned the contact but without any details (this is an Android 17 change). Copy the details and paste them below.", onSelect);
+  const contact = { name: _pcFirst(merged.name), tel: _pcFirst(merged.tel), email: _pcFirst(merged.email), ...parsed };
+  if (!contact.name && !contact.tel && !contact.email && !contact.addr1 && !contact.postcode) return null;
+  return contact;
+}
+
+async function openPhoneContacts(onSelect) {
+  if (!("contacts" in navigator && "ContactsManager" in window)) {
+    return "unsupported";
+  }
+  // If a smaller set of fields is known to work on this phone, use it.
+  let props = ["name", "tel", "email", "address"];
+  // (remembered for 7 days so a future Android/Chrome fix gets picked up again)
+  try { const saved = JSON.parse(localStorage.getItem("contactPickProps") || "null"); if (saved && Array.isArray(saved.props) && saved.props.length && Date.now() - saved.t < 7*864e5) props = saved.props; } catch {}
+  let results;
+  try {
+    results = await navigator.contacts.select(props, { multiple: false });
+  } catch(e) {
+    if (e && e.name === "SecurityError") return "blocked";
+    _pcLog(props, "error " + (e && e.name));
+    openContactPasteFallback("Your phone couldn't open its contacts for the app (" + ((e && e.name) || "error") + "). Try again below, or copy the contact's details and paste them.", onSelect);
+    return "fallback";
+  }
+  _pcLog(props, results && results.length ? "ok" : "empty", results);
+  if (!results || results.length === 0) {
+    openContactPasteFallback("Your phone didn't pass the contact's details back to the app (an Android 17 issue). Tap the orange button to try again asking for fewer details, or paste the details below.", onSelect);
+    return "fallback";
+  }
+  const contact = _pcBuild(results);
+  if (!contact) {
+    openContactPasteFallback("Your phone returned the contact but without any details (an Android 17 issue). Tap the orange button to try again, or paste the details below.", onSelect);
     return "fallback";
   }
   onSelect(contact);
   return "ok";
 }
-
 
 // Step 2: Client + Installation Details
 function StepClientDetails({ data, onChange, onNext, onBack, onHome }) {
