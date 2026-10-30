@@ -2555,7 +2555,13 @@ function parsePastedContact(text) {
   const t = String(text).replace(/\r/g, "");
   // vCard (.vcf) text
   if (/BEGIN:VCARD/i.test(t)) {
-    const unfolded = t.replace(/\n[ \t]/g, "");
+    let first = t.slice(t.search(/BEGIN:VCARD/i));
+    const endIdx = first.search(/END:VCARD/i); if (endIdx > 0) first = first.slice(0, endIdx);
+    // vCard 2.1 soft line breaks + quoted-printable
+    let unfolded = first.replace(/=\n/g, "").replace(/\n[ \t]/g, "");
+    unfolded = unfolded.replace(/^([^:\n]*ENCODING=QUOTED-PRINTABLE[^:\n]*):(.*)$/gim, (m, k, v) => {
+      try { const bytes = v.replace(/=([0-9A-F]{2})/gi, (x, h) => String.fromCharCode(parseInt(h, 16))); return k + ":" + decodeURIComponent(escape(bytes)); } catch { return k + ":" + v; }
+    });
     const get = (k) => { const m = unfolded.match(new RegExp("^" + k + "(?:;[^:\\n]*)?:(.*)$", "im")); return m ? m[1].trim() : ""; };
     out.name = get("FN") || get("N").split(";").filter(Boolean).reverse().join(" ");
     out.tel = get("TEL"); out.email = get("EMAIL");
@@ -2609,6 +2615,7 @@ function openContactPasteFallback(message, onSelect) {
       '<div style="font-weight:700;font-size:17px;color:#1a2b4a;margin-bottom:6px">Add contact details</div>' +
       '<div id="pc-msg" style="font-size:13.5px;color:#555;margin-bottom:12px;line-height:1.4"></div>' +
       '<button id="pc-retry" style="width:100%;padding:11px;border:1.5px solid #e08a00;border-radius:8px;background:#fff7e6;color:#9a5b00;font-weight:600;font-size:14px;margin-bottom:8px">Try phone contacts again (name, phone &amp; email)</button>' +
+      '<div style="font-size:12.5px;color:#1a2b4a;background:#eef3ff;border-radius:8px;padding:9px 10px;margin-bottom:8px;line-height:1.4"><b>Quickest way on Android 17:</b> open the contact in your phone\'s <b>Contacts</b> app, tap <b>Share</b>, choose <b>Gas App</b>, then tap Contacts here again. (Install the app first: Chrome menu &#8942; &rarr; <b>Add to Home screen</b> &rarr; Install.)</div>' +
       '<button id="pc-paste" style="width:100%;padding:11px;border:none;border-radius:8px;background:#2a52d4;color:#fff;font-weight:600;font-size:14px;margin-bottom:8px">Paste from clipboard</button>' +
       '<label style="display:block;width:100%;box-sizing:border-box;text-align:center;padding:10px;border:1.5px solid #2a52d4;border-radius:8px;color:#2a52d4;font-weight:600;font-size:14px;margin-bottom:10px">Open contact file (.vcf)<input id="pc-file" type="file" accept=".vcf,text/vcard,text/x-vcard" style="display:none"></label>' +
       '<textarea id="pc-text" rows="5" placeholder="Or type/paste here, e.g.\nAlan Cain\n5 Murieston Valley, Livingston EH54 9HB\n07715 672609\nalan@example.com" style="width:100%;box-sizing:border-box;border:1px solid #ccd;border-radius:8px;padding:10px;font-size:14px;font-family:inherit"></textarea>' +
@@ -2692,10 +2699,39 @@ function _pcBuild(results) {
   return contact;
 }
 
+function _pcSharedToast() {
+  try {
+    const pend = JSON.parse(localStorage.getItem("pendingSharedContact") || "null");
+    if (!pend || !pend.text) return;
+    const c = parsePastedContact(pend.text);
+    const old = document.getElementById("pc-toast"); if (old) old.remove();
+    const d = document.createElement("div");
+    d.id = "pc-toast";
+    d.setAttribute("style", "position:fixed;left:12px;right:12px;bottom:84px;z-index:99998;background:#1f9d55;color:#fff;border-radius:10px;padding:12px 14px;font-family:'Segoe UI',sans-serif;font-size:14px;box-shadow:0 6px 20px rgba(0,0,0,0.25)");
+    d.textContent = "Contact received: " + (c.name || c.tel || "contact") + ". Tap Contacts on the job form to fill it in.";
+    d.onclick = () => d.remove();
+    document.body.appendChild(d);
+    setTimeout(() => d.remove(), 9000);
+  } catch {}
+}
+if (typeof window !== "undefined") {
+  window.addEventListener("shared-contact", _pcSharedToast);
+  window.addEventListener("load", () => setTimeout(_pcSharedToast, 600));
+}
+
 async function openPhoneContacts(onSelect) {
   if (!("contacts" in navigator && "ContactsManager" in window)) {
     return "unsupported";
   }
+  // A contact shared from the phone's Contacts app (Share -> Gas App) wins.
+  try {
+    const pend = JSON.parse(localStorage.getItem("pendingSharedContact") || "null");
+    if (pend && pend.text && Date.now() - pend.t < 3 * 3600e3) {
+      const c = parsePastedContact(pend.text);
+      localStorage.removeItem("pendingSharedContact");
+      if (c.name || c.tel || c.email || c.addr1 || c.postcode) { _pcLog(["shared"], "ok"); onSelect(c); return "ok"; }
+    } else if (pend) localStorage.removeItem("pendingSharedContact");
+  } catch {}
   // If a smaller set of fields is known to work on this phone, use it.
   let props = ["name", "tel", "email", "address"];
   // (remembered for 7 days so a future Android/Chrome fix gets picked up again)
