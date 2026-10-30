@@ -2878,6 +2878,83 @@ function openGoogleContactsPicker(onSelect) {
   else showSignIn("Load the contacts saved in your Google account (one-time sign-in).");
 }
 
+// ── "Gas Contacts" Android helper app (reads contacts straight from the phone) ─
+function _hcIsAndroid() { return /Android/i.test(navigator.userAgent); }
+function _hcNewId() { const a = new Uint8Array(16); crypto.getRandomValues(a); return Array.from(a, b => b.toString(16).padStart(2, "0")).join(""); }
+function _hcToContact(c) {
+  const a = c.address || {};
+  let parsed = { addr1:"", addr2:"", addr3:"", postcode:"" };
+  try {
+    const lines = [a.street, a.neighborhood].filter(Boolean);
+    parsed = parsePhoneContactAddress(lines.length || a.city || a.postcode
+      ? { addressLine: lines, city: a.city, region: a.region, postalCode: a.postcode, country: a.country }
+      : { addressLine: a.formatted ? [a.formatted] : [] });
+  } catch {}
+  return { name: c.name || "", tel: c.tel || "", email: c.email || "", ...parsed };
+}
+function openHelperContactPicker(onSelect) {
+  const id = _hcNewId();
+  const old = document.getElementById("hc-modal"); if (old) old.remove();
+  const wrap = document.createElement("div");
+  wrap.id = "hc-modal";
+  wrap.setAttribute("style", "position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;font-family:'Segoe UI',sans-serif");
+  wrap.innerHTML =
+    '<div style="background:#fff;border-radius:14px;max-width:420px;width:100%;padding:18px;box-shadow:0 10px 30px rgba(0,0,0,0.3)">' +
+      '<div style="font-weight:700;font-size:17px;color:#1a2b4a;margin-bottom:8px">Phone contacts</div>' +
+      '<div id="hc-msg" style="font-size:14px;color:#444;line-height:1.45;margin-bottom:12px">Opening your contacts...</div>' +
+      '<div id="hc-install" style="display:none;margin-bottom:12px;font-size:13.5px;color:#1a2b4a;background:#eef3ff;border-radius:8px;padding:10px;line-height:1.45">' +
+        'The <b>Gas Contacts</b> app isn\'t installed yet (one-time setup):<br>1. Tap <b>Download Gas Contacts</b> below and open the file.<br>2. If asked, allow Chrome to install apps, then tap <b>Install</b>.<br>3. Come back here and tap <b>Open my contacts</b>.' +
+        '<a href="/gas-contacts.apk" download target="_blank" style="display:block;text-align:center;margin-top:10px;padding:11px;border-radius:8px;background:#1f9d55;color:#fff;font-weight:600;text-decoration:none">Download Gas Contacts</a>' +
+      '</div>' +
+      '<button id="hc-open" style="width:100%;padding:12px;border:none;border-radius:8px;background:#2a52d4;color:#fff;font-weight:600;font-size:15px;margin-bottom:8px">Open my contacts</button>' +
+      '<div style="display:flex;gap:8px">' +
+        '<button id="hc-cancel" style="flex:1;padding:10px;border:1px solid #ccd;border-radius:8px;background:#fff;font-size:13px">Cancel</button>' +
+        '<button id="hc-paste" style="flex:1;padding:10px;border:1px solid #ccd;border-radius:8px;background:#fff;font-size:13px">Paste / type instead</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(wrap);
+  const msg = wrap.querySelector("#hc-msg"), inst = wrap.querySelector("#hc-install");
+  let done = false, timer = null;
+  const stop = () => { done = true; clearInterval(timer); document.removeEventListener("visibilitychange", onVis); };
+  const close = () => { stop(); wrap.remove(); };
+  wrap.querySelector("#hc-cancel").onclick = close;
+  wrap.querySelector("#hc-paste").onclick = () => { close(); openContactPasteFallback("Paste or type the contact's details below.", onSelect); };
+  const poll = async () => {
+    if (done) return;
+    try {
+      const r = await fetch("/.netlify/functions/contact-relay?id=" + id, { cache: "no-store" });
+      const j = await r.json();
+      if (j && j.contact && !done) {
+        try { localStorage.setItem("hc_installed", "1"); } catch {}
+        close();
+        onSelect(_hcToContact(j.contact));
+      }
+    } catch {}
+  };
+  const onVis = () => { if (document.visibilityState === "visible") { poll(); setTimeout(poll, 800); setTimeout(poll, 2000); } };
+  document.addEventListener("visibilitychange", onVis);
+  const launch = () => {
+    let left = false;
+    const markLeft = () => { if (document.visibilityState === "hidden") left = true; };
+    document.addEventListener("visibilitychange", markLeft);
+    location.href = "intent://pick?id=" + id + "#Intent;scheme=gascontacts;end";
+    msg.textContent = "Pick the contact in the Gas Contacts app - the details will fill in here automatically.";
+    clearInterval(timer);
+    const started = Date.now();
+    timer = setInterval(() => { if (Date.now() - started > 15 * 60e3) stop(); else if (document.visibilityState === "visible") poll(); }, 1500);
+    setTimeout(() => {
+      document.removeEventListener("visibilitychange", markLeft);
+      if (!left && !done) {
+        msg.textContent = "Your contacts didn't open.";
+        inst.style.display = "block";
+        try { localStorage.removeItem("hc_installed"); } catch {}
+      }
+    }, 1800);
+  };
+  wrap.querySelector("#hc-open").onclick = launch;
+  launch(); // the Contacts tap counts as the user gesture
+}
+
 async function openPhoneContacts(onSelect) {
   // A contact shared from the phone's Contacts app (Share -> Gas App) wins.
   try {
@@ -2890,6 +2967,7 @@ async function openPhoneContacts(onSelect) {
   } catch {}
   // Android 17 + Chrome's phone contact picker returns nothing, so use the
   // in-app Google Contacts list instead (works on any phone/browser).
+  if (_hcIsAndroid()) { openHelperContactPicker(onSelect); return "fallback"; }
   if (true) { openGoogleContactsPicker(onSelect); return "fallback"; }
   if (!("contacts" in navigator && "ContactsManager" in window)) {
     return "unsupported";
