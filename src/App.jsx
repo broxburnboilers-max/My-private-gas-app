@@ -202,10 +202,48 @@ function normaliseDate(str) {
   return str;
 }
 function formatDate(d) {
+  // Saved records come back from storage with dates as text, so accept both.
+  if (!(d instanceof Date)) d = d ? (parseReportDate(d) || new Date(d)) : new Date();
+  if (isNaN(d)) return "";
   const days = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
   const months = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
   return `${days[d.getDay()]}-${String(d.getDate()).padStart(2,"0")}-${months[d.getMonth()]}-${d.getFullYear()}`;
 }
+// Report dates on service/benchmark records are stored as text like
+// "SAT-07-NOV-2026". Build that format from any date, and read it back into a
+// real Date so PDFs can print it consistently.
+const _RD_DAYS = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
+const _RD_MONTHS = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+function fmtReportDate(d) {
+  const dt = d ? (d instanceof Date ? d : new Date(d)) : new Date();
+  if (isNaN(dt)) return "";
+  return `${_RD_DAYS[dt.getDay()]}-${String(dt.getDate()).padStart(2,"0")}-${_RD_MONTHS[dt.getMonth()]}-${dt.getFullYear()}`;
+}
+function parseReportDate(str) {
+  if (!str) return null;
+  if (str instanceof Date) return isNaN(str) ? null : str;
+  const s = String(str).trim();
+  let m = s.match(/^(?:[A-Z]{3}-)?(\d{1,2})-([A-Z]{3})-(\d{4})$/i);
+  if (m) { const mi = _RD_MONTHS.indexOf(m[2].toUpperCase()); if (mi >= 0) return new Date(+m[3], mi, +m[1]); }
+  m = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/);
+  if (m) { const y = m[3].length === 2 ? 2000 + +m[3] : +m[3]; return new Date(y, +m[2]-1, +m[1]); }
+  const d = new Date(s);
+  return isNaN(d) ? null : d;
+}
+function toDateInputValue(d) {
+  const dt = d ? (d instanceof Date ? d : new Date(d)) : new Date();
+  if (isNaN(dt)) return "";
+  return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
+}
+
+function dateInputToISO(value, originalISO) {
+  if (originalISO && toDateInputValue(originalISO) === value) return originalISO;
+  if (!value) return originalISO || new Date().toISOString();
+  if (!originalISO && value === toDateInputValue(new Date())) return new Date().toISOString();
+  const [y,m,d] = value.split("-").map(Number);
+  return new Date(y, m-1, d, 12, 0, 0).toISOString();
+}
+
 function nextYear() {
   const d = new Date();
   d.setFullYear(d.getFullYear() + 1);
@@ -328,6 +366,8 @@ function PickerScreen({ title, options, onSelect, onBack }) {
 
 // ── Calendar ──────────────────────────────────────────────────────────────────
 function CalendarModal({ value, onChange, onClose }) {
+  const _v = value instanceof Date ? value : (value ? new Date(value) : null);
+  value = _v && !isNaN(_v) ? _v : null;
   const [view, setView] = useState(value || new Date());
   const year = view.getFullYear();
   const month = view.getMonth();
@@ -2454,10 +2494,11 @@ function GasWorksPDFPreview({ form, onClose, autoDownload, onDownloadDone }) {
 // ── GAS SAFETY CERTIFICATE FLOW ───────────────────────────────────────────────
 
 // Step 1: File Reference
-function StepFileRef({ data, onChange, onNext, onBack, onHome }) {
+function StepFileRef({ data, onChange, onNext, onBack, onHome, isEditing }) {
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:LIGHT_BG, fontFamily:"'Segoe UI',sans-serif" }}>
-      <Header title="Domestic/Landlord Gas Safety Certificate" onBack={onBack}/>
+      <Header title={isEditing ? "Edit Gas Safety Certificate" : "Domestic/Landlord Gas Safety Certificate"} onBack={onBack}/>
+      {isEditing && <div style={{ background:"#fff8e1", color:"#7a5b00", padding:"10px 16px", fontSize:13, borderBottom:"1px solid #ffe08a" }}>✏️ Editing a saved certificate. Go through each page and change anything you need — tap Save at the end to update this certificate.</div>}
       <div style={{ flex:1, overflowY:"auto", padding:24 }}>
         <p style={{ color:"#888", fontSize:15, marginBottom:20, textAlign:"center" }}>Please enter a file reference</p>
         <input value={data.certRef} onChange={e=>onChange({...data,certRef:e.target.value})} placeholder="Certificate Reference"
@@ -3426,6 +3467,8 @@ function StepEngineerDetails({ data, onChange, onOptions, onBack, onHome }) {
         <FormInput placeholder="Address" value={data.companyAddr||""} onChange={v=>onChange({...data,companyAddr:v})} multiline/>
         <FormInput placeholder="Postcode" value={data.companyPostcode||""} onChange={v=>onChange({...data,companyPostcode:v})}/>
         <FormInput placeholder="Telephone" value={data.companyTel||""} onChange={v=>onChange({...data,companyTel:v})}/>
+        <FormInput placeholder="Email" value={data.companyEmail||""} onChange={v=>onChange({...data,companyEmail:v})}/>
+        <FormInput placeholder="Website" value={data.companyWeb||""} onChange={v=>onChange({...data,companyWeb:v})}/>
         <FormInput placeholder="Gas Safe Registration No." value={data.gasSafeNo||""} onChange={v=>onChange({...data,gasSafeNo:v})}/>
         <div style={{ padding:"8px 16px 4px", background:LIGHT_BG }}><p style={{ fontSize:13, color:"#888", margin:"8px 0 4px", fontWeight:600 }}>Report Issued By</p></div>
         <FormInput placeholder="Engineer Name" value={data.engineerName||""} onChange={v=>onChange({...data,engineerName:v})}/>
@@ -3526,8 +3569,8 @@ function BatchDownloader({ queue, onDone }) {
   const renderPreview = () => {
     const r = item.record;
     const key = `batch-${currentIdx}`;
-    if (item.type === "gsc") return <PDFPreview key={key} certData={r.certData} appliances={r.appliances} faults={r.faults} finalChecks={r.finalChecks} signatureData={r.signatureData} engineerData={r.engineerData} onClose={()=>{}} autoDownload onDownloadDone={stableAdvance}/>;
-    if (item.type === "bs")  return <BSPDFPreview key={key} serviceData={r.serviceData} engineerData={r.bsEngData} signatureData={r.bsSigData} onClose={()=>{}} autoDownload onDownloadDone={stableAdvance}/>;
+    if (item.type === "gsc") return <PDFPreview key={key} savedAt={r.savedAt} certData={r.certData} appliances={r.appliances} faults={r.faults} finalChecks={r.finalChecks} signatureData={r.signatureData} engineerData={r.engineerData || {}} onClose={()=>{}} autoDownload onDownloadDone={stableAdvance}/>;
+    if (item.type === "bs")  return <BSPDFPreview key={key} savedAt={r.savedAt} serviceData={r.serviceData} engineerData={r.bsEngData} signatureData={r.bsSigData} onClose={()=>{}} autoDownload onDownloadDone={stableAdvance}/>;
     if (item.type === "gw")  return <GasWorksPDFPreview key={key} form={r.gwData} onClose={()=>{}} autoDownload onDownloadDone={stableAdvance}/>;
     if (item.type === "gi")  return <GasIsolationPDFPreview key={key} form={r.giData} onClose={()=>{}} autoDownload onDownloadDone={stableAdvance}/>;
     if (item.type === "wn")  return <WNPDFPreview key={key} wnFormData={{...r.wnFormData, issueDate:r.wnEngData?.issueDate, issueTime:r.wnEngData?.issueTime}} wnEngData={r.wnEngData} onClose={()=>{}} autoDownload onDownloadDone={stableAdvance}/>;
@@ -3559,7 +3602,7 @@ function BatchDownloader({ queue, onDone }) {
 }
 
 // PDF Preview
-function PDFPreview({ certData, appliances, faults, finalChecks, signatureData, engineerData, onClose, autoDownload, onDownloadDone }) {
+function PDFPreview({ certData, appliances, faults, finalChecks, signatureData, engineerData, onClose, autoDownload, onDownloadDone, savedAt }) {
   const certRef = useRef(null);
   const [downloading, setDownloading] = useState(false);
   const autoDownloadDoneRef = useRef(false);
@@ -3571,7 +3614,7 @@ function PDFPreview({ certData, appliances, faults, finalChecks, signatureData, 
     return isNaN(parsed.getTime()) ? null : parsed;
   };
   const inspDate = parseDate(finalChecks.inspectionDate) || nextYear();
-  const certDate = parseDate(engineerData.certDate) || today();
+  const certDate = parseDate(engineerData.certDate) || parseDate(savedAt) || today();
   const ref = certData.certRef || ("GSC-" + Date.now());
   const certNo = "GSC-" + Date.now();
 
@@ -4197,6 +4240,8 @@ function InvoiceWizard({ sourceRecord, onSave, onClose, invoiceRecords, prefillD
   const [engineerId, setEngineerId] = useState(isTpcPrefill ? "" : (pf.engineerId || activeProfile.gasId));
 
   const [showPDFPreview, setShowPDFPreview] = useState(false);
+  const [docDate, setDocDate] = useState(() => toDateInputValue(isEditing && pf.createdAt ? pf.createdAt : new Date()));
+  const [, forceNoRender] = useState(0);
 
   const chooseIssuer = (key) => {
     if (key === issuerKey) return;
@@ -4282,7 +4327,7 @@ function InvoiceWizard({ sourceRecord, onSave, onClose, invoiceRecords, prefillD
       instName, instAddr1, instAddr2, instAddr3, instPostcode, instTel,
       lineItems, subTotal, taxTotal, total, fullyPaid, paid: paidAmt, outstanding, paymentMethod, terms, companyNumber, vatRegNumber,
       notes, companyName, companyAddr, companyPostcode: companyPostcode2, companyTel: companyTel2, gasSafeNo: gasSafeNo2, issuedBy, engineerId,
-      createdAt: isEditing && pf.createdAt ? pf.createdAt : new Date().toISOString(),
+      createdAt: dateInputToISO(docDate, isEditing ? pf.createdAt : undefined),
       paidAt: fullyPaid ? (isEditing && pf.paidAt ? pf.paidAt : new Date().toISOString()) : undefined,
     };
     return (
@@ -4312,7 +4357,13 @@ function InvoiceWizard({ sourceRecord, onSave, onClose, invoiceRecords, prefillD
       <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px" }}>
         <div style={{ background: "#fff", borderRadius: 8, padding: "10px 14px", marginBottom: 10, textAlign: "center", border: "1px solid #ddd" }}>
           <span style={{ fontSize: 12, color: "#888" }}>Invoice No: </span>
-          <span style={{ fontWeight: 700, fontSize: 15 }}>{invoiceNo.current}</span>
+          {isEditing
+            ? <input value={invoiceNo.current} onChange={e => { invoiceNo.current = e.target.value; forceNoRender(n => n + 1); }} style={{ padding:"6px 8px", border:"1px solid #ddd", borderRadius:6, fontSize:15, fontWeight:700, width:150, textAlign:"center" }}/>
+            : <span style={{ fontWeight: 700, fontSize: 15 }}>{invoiceNo.current}</span>}
+          <div style={{ marginTop: 8, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+            <span style={{ fontSize: 12, color: "#888" }}>Invoice Date:</span>
+            <input type="date" value={docDate} onChange={e => setDocDate(e.target.value)} style={{ padding:"8px 10px", border:"1px solid #ddd", borderRadius:6, fontSize:14, fontWeight:700 }}/>
+          </div>
         </div>
         {canPickIssuer && (
           <div style={{ background: "#fff", borderRadius: 8, padding: "10px 12px", marginBottom: 10, border: "1px solid #ddd" }}>
@@ -4762,6 +4813,8 @@ function QuoteWizard({ sourceRecord, onSave, onClose, prefillData, isEditing }) 
   const [issuedBy, setIssuedBy] = useState(pf.issuedBy || activeProfile.engineerName);
   const [engineerId, setEngineerId] = useState(pf.engineerId || activeProfile.gasId);
   const [showPDFPreview, setShowPDFPreview] = useState(false);
+  const [docDate, setDocDate] = useState(() => toDateInputValue(isEditing && pf.createdAt ? pf.createdAt : new Date()));
+  const [, forceNoRender] = useState(0);
   const [contactError, setContactError] = useState("");
 
   const handleContactBtn = async (target) => {
@@ -4808,7 +4861,7 @@ function QuoteWizard({ sourceRecord, onSave, onClose, prefillData, isEditing }) 
   );
 
   if (showPDFPreview) {
-    const quoteData = { quoteNo: quoteNo.current, clientName, clientAddr1, clientAddr2, clientAddr3, clientPostcode, clientTel, clientEmail, instName, instAddr1, instAddr2, instAddr3, instPostcode, instTel, lineItems, subTotal, taxTotal, total, fullyPaid, paid: paidAmt, outstanding, paymentMethod, terms, companyNumber, vatRegNumber, notes, companyName, companyAddr, companyPostcode: companyPostcode2, companyTel: companyTel2, gasSafeNo: gasSafeNo2, issuedBy, engineerId, createdAt: isEditing && pf.createdAt ? pf.createdAt : new Date().toISOString() };
+    const quoteData = { quoteNo: quoteNo.current, clientName, clientAddr1, clientAddr2, clientAddr3, clientPostcode, clientTel, clientEmail, instName, instAddr1, instAddr2, instAddr3, instPostcode, instTel, lineItems, subTotal, taxTotal, total, fullyPaid, paid: paidAmt, outstanding, paymentMethod, terms, companyNumber, vatRegNumber, notes, companyName, companyAddr, companyPostcode: companyPostcode2, companyTel: companyTel2, gasSafeNo: gasSafeNo2, issuedBy, engineerId, createdAt: dateInputToISO(docDate, isEditing ? pf.createdAt : undefined) };
     return <QuotePDFPreview quoteData={quoteData} onClose={() => setShowPDFPreview(false)} onSave={() => { if (isEditing) { onSave({ ...quoteData }); return; } const finalNo = getNextQuoteNumber(); quoteNo.current = finalNo; onSave({ ...quoteData, quoteNo: finalNo }); }} />;
   }
 
@@ -4821,7 +4874,14 @@ function QuoteWizard({ sourceRecord, onSave, onClose, prefillData, isEditing }) 
       </div>
       <div style={{ flex:1, overflowY:"auto", padding:"12px 14px" }}>
         <div style={{ background:"#fff", borderRadius:8, padding:"10px 14px", marginBottom:10, textAlign:"center", border:"1px solid #ddd" }}>
-          <span style={{ fontSize:12, color:"#888" }}>Quote No: </span><span style={{ fontWeight:700, fontSize:15 }}>{quoteNo.current}</span>
+          <span style={{ fontSize:12, color:"#888" }}>Quote No: </span>
+          {isEditing
+            ? <input value={quoteNo.current} onChange={e => { quoteNo.current = e.target.value; forceNoRender(n => n + 1); }} style={{ padding:"6px 8px", border:"1px solid #ddd", borderRadius:6, fontSize:15, fontWeight:700, width:150, textAlign:"center" }}/>
+            : <span style={{ fontWeight:700, fontSize:15 }}>{quoteNo.current}</span>}
+          <div style={{ marginTop: 8, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+            <span style={{ fontSize: 12, color: "#888" }}>Quote Date:</span>
+            <input type="date" value={docDate} onChange={e => setDocDate(e.target.value)} style={{ padding:"8px 10px", border:"1px solid #ddd", borderRadius:6, fontSize:14, fontWeight:700 }}/>
+          </div>
         </div>
         {contactError && <div style={{ background:"#fee", color:"#c00", padding:"8px 12px", borderRadius:8, fontSize:13, marginBottom:8 }}>{contactError}</div>}
         {sectionHeader("Client Details", <ContactBtn target="client"/>)}
@@ -5770,10 +5830,10 @@ function InvoicesScreen({ invoices, onBack, onHome, onDelete, onMarkPaid, onImpo
 function RecordActionSheet({ title, onClose, onPreview, onDownload, onEdit, onDelete, onCopyToInvoice, onPinReminder, isPinned }) {
   const actions = [
     { label:"👁 Preview", fn: onPreview, color:"#222" },
-    { label:"⬇ Download PDF", fn: onDownload, color:"#222" },
-    { label:"📄 Copy to Invoice", fn: onCopyToInvoice, color: INV_GREEN_DARK },
-    ...(onPinReminder ? [{ label: isPinned ? "🔕 Remove from Reminders" : "📬 Add to Reminders", fn: onPinReminder, color: isPinned ? "#888" : "#c00" }] : []),
     ...(onEdit ? [{ label:"✏️ Edit", fn: onEdit, color:BLUE }] : []),
+    { label:"⬇ Download PDF", fn: onDownload, color:"#222" },
+    ...(onCopyToInvoice ? [{ label:"📄 Copy to Invoice", fn: onCopyToInvoice, color: INV_GREEN_DARK }] : []),
+    ...(onPinReminder ? [{ label: isPinned ? "🔕 Remove from Reminders" : "📬 Add to Reminders", fn: onPinReminder, color: isPinned ? "#888" : "#c00" }] : []),
     { label:"🗑 Delete", fn: onDelete, color:"#c00" },
   ];
   return (
@@ -5813,7 +5873,7 @@ function ConfirmDeleteModal({ onCancel, onConfirm }) {
 }
 
 // Gas Safety Certificates folder screen
-function GasSafetyCertsScreen({ records, onBack, onHome, onDelete, onCreateInvoice, gscFolders, onAddFolder, onRenameFolder, onDeleteFolder, onUpdateRecord }) {
+function GasSafetyCertsScreen({ records, onBack, onHome, onDelete, onCreateInvoice, gscFolders, onAddFolder, onRenameFolder, onDeleteFolder, onUpdateRecord, onEdit }) {
   const [view, setView] = useState("home"); // "home" | folder id
   const [selected, setSelected] = useState(null);
   const [viewing, setViewing] = useState(null);
@@ -5868,7 +5928,7 @@ function GasSafetyCertsScreen({ records, onBack, onHome, onDelete, onCreateInvoi
   }
   if (viewing !== null) {
     const r = viewRecords[viewing];
-    return <PDFPreview certData={r.certData} appliances={r.appliances} faults={r.faults} finalChecks={r.finalChecks} signatureData={r.signatureData} engineerData={r.engineerData} onClose={()=>setViewing(null)}/>;
+    return <PDFPreview savedAt={r.savedAt} certData={r.certData} appliances={r.appliances} faults={r.faults} finalChecks={r.finalChecks} signatureData={r.signatureData} engineerData={r.engineerData || {}} onClose={()=>setViewing(null)}/>;
   }
 
   const toggleCheck = (i) => setCheckedItems(prev => prev.includes(i) ? prev.filter(x=>x!==i) : [...prev, i]);
@@ -6016,6 +6076,7 @@ function GasSafetyCertsScreen({ records, onBack, onHome, onDelete, onCreateInvoi
             <div style={{ fontSize:12, color:"#aaa", textAlign:"center", marginBottom:20 }}>{viewRecords[selected]?.certData?.instAddr1||""}</div>
             {[
               { label:"👁 Preview", fn:()=>{ setViewing(selected); setSelected(null); }, color:"#222" },
+              ...(onEdit ? [{ label:"✏️ Edit Certificate", fn:()=>{ onEdit(viewRecords[selected]); setSelected(null); }, color:BLUE }] : []),
               { label:"⬇ Download PDF", fn:()=>{ setViewing(selected); setSelected(null); }, color:"#222" },
               { label:"📄 Copy to Invoice", fn:()=>{ setInvoiceFor(selected); setSelected(null); }, color:INV_GREEN_DARK },
               { label: viewRecords[selected]?.pinnedReminder ? "🔕 Remove from Reminders" : "📬 Add to Reminders", fn:()=>{ const r=viewRecords[selected]; if(onUpdateRecord) onUpdateRecord(r._origIdx,{...r,pinnedReminder:!r.pinnedReminder}); setSelected(null); }, color: viewRecords[selected]?.pinnedReminder ? "#888" : "#c00" },
@@ -6163,7 +6224,7 @@ function BoilerServiceRecordsScreen({ records, onBack, onHome, onDelete, onCreat
 
   if (viewing !== null) {
     const r = bsRecords[viewing];
-    return <BSPDFPreview serviceData={r.serviceData} engineerData={r.bsEngData} signatureData={r.bsSigData} onClose={()=>setViewing(null)}/>;
+    return <BSPDFPreview savedAt={r.savedAt} serviceData={r.serviceData} engineerData={r.bsEngData} signatureData={r.bsSigData} onClose={()=>setViewing(null)}/>;
   }
 
   const toggleCheck = (i) => setCheckedItems(prev => prev.includes(i) ? prev.filter(x=>x!==i) : [...prev, i]);
@@ -6262,7 +6323,7 @@ function BoilerServiceRecordsScreen({ records, onBack, onHome, onDelete, onCreat
   );
 }
 
-function WarningNoticeRecordsScreen({ records, onBack, onHome, onDelete }) {
+function WarningNoticeRecordsScreen({ records, onBack, onHome, onDelete, onEdit }) {
   const [selected, setSelected] = useState(null);
   const [viewing, setViewing] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -6362,6 +6423,7 @@ function WarningNoticeRecordsScreen({ records, onBack, onHome, onDelete }) {
         <RecordActionSheet title={wnRecords[selected]?.wnFormData?.clientName || "Warning Notice"} onClose={()=>setSelected(null)}
           onPreview={()=>{ setViewing(selected); setSelected(null); }}
           onDownload={()=>{ setViewing(selected); setSelected(null); }}
+          onEdit={onEdit ? ()=>{ onEdit(wnRecords[selected]); setSelected(null); } : undefined}
           onDelete={()=>{ setConfirmDelete(selected); setSelected(null); }}/>
       )}
       {confirmDelete !== null && (
@@ -7381,7 +7443,7 @@ function ImportedGasCheckerScreen({ onBack, onHome, onRenewImported }) {
   );
 }
 
-function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, onEditGi, onEditBs, onEditBmk, invoices, onCreateInvoice, onDeleteInvoice, onMarkPaid, quotes, onDeleteQuote, onConvertQuoteToInvoice, onImportInvoices, onImportQuotes, onImportReports, onImportFolders, engineerData, accountReports, onDeleteReport, yearlyReports, onDeleteYearly, onRebuildYearly, onUpdateReport, gscFolders, onAddFolder, onRenameFolder, onDeleteFolder, onUpdateRecord, onEditInvoice, onEditQuote, company, onRenewImported }) {
+function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, onEditGi, onEditBs, onEditBmk, onEditGsc, onEditWn, invoices, onCreateInvoice, onDeleteInvoice, onMarkPaid, quotes, onDeleteQuote, onConvertQuoteToInvoice, onImportInvoices, onImportQuotes, onImportReports, onImportFolders, engineerData, accountReports, onDeleteReport, yearlyReports, onDeleteYearly, onRebuildYearly, onUpdateReport, gscFolders, onAddFolder, onRenameFolder, onDeleteFolder, onUpdateRecord, onEditInvoice, onEditQuote, company, onRenewImported }) {
   // Invoicing-only companies (e.g. the property-survey consultancy) never see
   // the folder picker below — they land straight in their Invoices folder,
   // and its back button returns all the way Home rather than to a folder
@@ -7390,12 +7452,12 @@ function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, 
   const [folder, setFolder] = useState(() => invoiceOnlyCompany ? "inv" : null);
 
   if (folder === "reminders") return <RemindersScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} engineerData={engineerData} onRenewImported={onRenewImported} onUpdateRecord={onUpdateRecord}/>;
-  if (folder === "gsc") return <GasSafetyCertsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete} onCreateInvoice={onCreateInvoice} gscFolders={gscFolders} onAddFolder={onAddFolder} onRenameFolder={onRenameFolder} onDeleteFolder={onDeleteFolder} onUpdateRecord={onUpdateRecord}/>;
+  if (folder === "gsc") return <GasSafetyCertsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete} onCreateInvoice={onCreateInvoice} gscFolders={gscFolders} onAddFolder={onAddFolder} onRenameFolder={onRenameFolder} onDeleteFolder={onDeleteFolder} onUpdateRecord={onUpdateRecord} onEdit={onEditGsc}/>;
   if (folder === "bs") return <BoilerServiceRecordsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete} onCreateInvoice={onCreateInvoice} onUpdateRecord={onUpdateRecord} onEdit={onEditBs}/>;
   if (folder === "gw") return <GasWorksRecordsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete} onEdit={onEditGw} onCreateInvoice={onCreateInvoice}/>;
   if (folder === "gi") return <GasIsolationRecordsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete} onEdit={onEditGi} onCreateInvoice={onCreateInvoice}/>;
   if (folder === "bmk") return <BenchmarkRecordsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete} onEdit={onEditBmk} onCreateInvoice={onCreateInvoice}/>;
-  if (folder === "wn") return <WarningNoticeRecordsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete}/>;
+  if (folder === "wn") return <WarningNoticeRecordsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete} onEdit={onEditWn}/>;
   if (folder === "inv") return <InvoicesScreen invoices={invoices} onBack={invoiceOnlyCompany ? onHome : ()=>setFolder(null)} onHome={onHome} onDelete={onDeleteInvoice} onMarkPaid={onMarkPaid} onImport={onCreateInvoice} onEdit={onEditInvoice} company={company}/>;
   if (folder === "quotes") return <QuotesScreen quotes={quotes||[]} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDeleteQuote} onConvertToInvoice={(i)=>onConvertQuoteToInvoice(i)} onEdit={onEditQuote} company={company}/>;
   if (folder === "reports") return <AccountReportsScreen reports={accountReports||[]} onBack={()=>setFolder(null)} onHome={onHome} onDelete={(i)=>{ if(onDeleteReport) onDeleteReport(i); }} yearlyReports={yearlyReports||[]} onDeleteYearly={(i)=>{ if(onDeleteYearly) onDeleteYearly(i); }} onRebuildYearly={onRebuildYearly} onUpdateReport={onUpdateReport}/>;
@@ -8804,7 +8866,7 @@ function BSStepSignature({ data, onChange, onNext, onBack, onHome }) {
 function BSStepEngineerDetails({ data, onChange, onOptions, onBack, onHome }) {
   const fmtDate = () => { const d=new Date(); const days=["SUN","MON","TUE","WED","THU","FRI","SAT"]; const months=["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"]; return `${days[d.getDay()]}-${String(d.getDate()).padStart(2,"0")}-${months[d.getMonth()]}-${d.getFullYear()}`; };
   const fmtTime = () => { const d=new Date(); let h=d.getHours(); const m=String(d.getMinutes()).padStart(2,"0"); const ampm=h>=12?"PM":"AM"; h=h%12||12; return `${String(h).padStart(2,"0")}:${m} ${ampm}`; };
-  if (!data.timeArrival) { const t=fmtTime(); onChange({...data, timeArrival:t, timeDeparture:t, reportDate:fmtDate()}); }
+  if (!data.timeArrival) { const t=fmtTime(); onChange({...data, timeArrival:t, timeDeparture:t, reportDate:data.reportDate||fmtDate()}); }
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:LIGHT_BG }}>
       <Header title="Engineer Details" onBack={onBack}/>
@@ -8826,9 +8888,10 @@ function BSStepEngineerDetails({ data, onChange, onOptions, onBack, onHome }) {
         <div style={{ fontSize:13, color:"#999", padding:"10px 16px 4px", fontFamily:"'Segoe UI',sans-serif" }}>Report Issued By</div>
         <FormInput label="" placeholder="Name" value={data.engineerName||""} onChange={v=>onChange({...data,engineerName:v})}/>
         <FormInput label="" placeholder="Gas ID No" value={data.gasId||""} onChange={v=>onChange({...data,gasId:v})}/>
-        <div style={{ padding:"12px 16px", border:"none", borderBottom:"1px solid #e8eaf0", background:"#fff", fontSize:15, fontFamily:"'Segoe UI',sans-serif", fontWeight:700 }}>
-          {data.reportDate || fmtDate()}
-        </div>
+        <div style={{ fontSize:13, color:"#999", padding:"8px 16px 2px", fontFamily:"'Segoe UI',sans-serif" }}>Report Date</div>
+        <input type="date" value={toDateInputValue(parseReportDate(data.reportDate) || new Date())}
+          onChange={e=>{ const v=e.target.value; if(!v) return; const [y,m,dd]=v.split("-").map(Number); onChange({...data, reportDate: fmtReportDate(new Date(y,m-1,dd))}); }}
+          style={{ width:"100%", boxSizing:"border-box", padding:"12px 16px", border:"none", borderBottom:"1px solid #e8eaf0", background:"#fff", fontSize:15, fontFamily:"'Segoe UI',sans-serif", fontWeight:700, outline:"none" }}/>
         <div style={{height:16}}/>
       </div>
       <BottomBar onHome={onHome} onOptions={onOptions}/>
@@ -9222,7 +9285,7 @@ function WNPDFPreview({ wnFormData, wnEngData, onClose, autoDownload, onDownload
 }
 
 // BS PDF Preview — Gas Service/Breakdown Record
-function BSPDFPreview({ serviceData, engineerData, signatureData, onClose, autoDownload, onDownloadDone }) {
+function BSPDFPreview({ serviceData, engineerData, signatureData, onClose, autoDownload, onDownloadDone, savedAt }) {
   const certRef = useRef(null);
   const [downloading, setDownloading] = useState(false);
   const autoDownloadDoneRef = useRef(false);
@@ -9230,7 +9293,9 @@ function BSPDFPreview({ serviceData, engineerData, signatureData, onClose, autoD
   const bd = "1px solid #999";
   const bd2 = "2px solid #1a3a8f";
   const fmtShort = (d) => { if(!d) return ""; const dt=d instanceof Date?d:new Date(d); if(isNaN(dt)) return d; return `${String(dt.getDate()).padStart(2,"0")}/${String(dt.getMonth()+1).padStart(2,"0")}/${dt.getFullYear()}`; };
-  const todayStr = fmtShort(new Date());
+  // Print the date stored on the record (editable on the Engineer Details
+  // page), falling back to when it was saved — never just "today".
+  const todayStr = fmtShort(parseReportDate(engineerData?.reportDate) || (savedAt ? new Date(savedAt) : new Date()));
 
   const downloadPDF = async () => {
     setDownloading(true);
@@ -9900,7 +9965,7 @@ function BmkStepCustomerSig({ data, onChange, onNext, onBack, onHome }) {
 function BmkStepCompanyDetails({ data, onChange, onOptions, onBack, onHome }) {
   const fmtDate = () => { const d=new Date(); const days=["SUN","MON","TUE","WED","THU","FRI","SAT"]; const months=["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"]; return `${days[d.getDay()]}-${String(d.getDate()).padStart(2,"0")}-${months[d.getMonth()]}-${d.getFullYear()}`; };
   const fmtTime = () => { const d=new Date(); let h=d.getHours(); const m=String(d.getMinutes()).padStart(2,"0"); const ampm=h>=12?"PM":"AM"; h=h%12||12; return `${String(h).padStart(2,"0")}:${m} ${ampm}`; };
-  if (!data.timeArrival) { const t=fmtTime(); onChange({...data, timeArrival:t, timeDeparture:t, reportDate:fmtDate()}); }
+  if (!data.timeArrival) { const t=fmtTime(); onChange({...data, timeArrival:t, timeDeparture:t, reportDate:data.reportDate||fmtDate()}); }
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:LIGHT_BG }}>
       <Header title="Engineer Details" onBack={onBack}/>
@@ -9922,9 +9987,10 @@ function BmkStepCompanyDetails({ data, onChange, onOptions, onBack, onHome }) {
         <div style={{ fontSize:13, color:"#999", padding:"10px 16px 4px", fontFamily:"'Segoe UI',sans-serif" }}>Report Issued By</div>
         <FormInput label="" placeholder="Name" value={data.engineerName||""} onChange={v=>onChange({...data,engineerName:v})}/>
         <FormInput label="" placeholder="Gas ID No" value={data.gasId||""} onChange={v=>onChange({...data,gasId:v})}/>
-        <div style={{ padding:"12px 16px", border:"none", borderBottom:"1px solid #e8eaf0", background:"#fff", fontSize:15, fontFamily:"'Segoe UI',sans-serif", fontWeight:700 }}>
-          {data.reportDate || fmtDate()}
-        </div>
+        <div style={{ fontSize:13, color:"#999", padding:"8px 16px 2px", fontFamily:"'Segoe UI',sans-serif" }}>Report Date</div>
+        <input type="date" value={toDateInputValue(parseReportDate(data.reportDate) || new Date())}
+          onChange={e=>{ const v=e.target.value; if(!v) return; const [y,m,dd]=v.split("-").map(Number); onChange({...data, reportDate: fmtReportDate(new Date(y,m-1,dd))}); }}
+          style={{ width:"100%", boxSizing:"border-box", padding:"12px 16px", border:"none", borderBottom:"1px solid #e8eaf0", background:"#fff", fontSize:15, fontFamily:"'Segoe UI',sans-serif", fontWeight:700, outline:"none" }}/>
         <div style={{height:16}}/>
       </div>
       <BottomBar onHome={onHome} onOptions={onOptions}/>
@@ -10389,6 +10455,9 @@ function App() {
   const [editingBsIndex, setEditingBsIndex] = useState(null);
   const [editingGwIndex, setEditingGwIndex] = useState(null);
   const [editingBmkIndex, setEditingBmkIndex] = useState(null);
+  const [editingGscIndex, setEditingGscIndex] = useState(null);
+  const [editingWnIndex, setEditingWnIndex] = useState(null);
+  const [editingGiIndex, setEditingGiIndex] = useState(null);
 
   // Persist records to localStorage whenever they change
   useEffect(() => {
@@ -10571,7 +10640,8 @@ function App() {
       setFaults([]);
       setFinalChecks({ ...(rec.finalChecks || {}), inspectionDate: nextYear() });
       setSignatureData({ ...(rec.signatureData || {}), engineerSigImage: null });
-      setEngineerData(prev => ({ ...prev, companyName:activeProfile.companyName, companyAddr:activeProfile.companyAddr, companyPostcode:activeProfile.companyPostcode, companyTel:activeProfile.companyTel, companyEmail:activeProfile.companyEmail, companyWeb:activeProfile.companyWeb, gasSafeNo:activeProfile.gasSafeNo, engineerName:activeProfile.engineerName, gasId:activeProfile.gasId }));
+      setEditingGscIndex(null);
+      setEngineerData(prev => ({ ...prev, certDate: undefined, companyName:activeProfile.companyName, companyAddr:activeProfile.companyAddr, companyPostcode:activeProfile.companyPostcode, companyTel:activeProfile.companyTel, companyEmail:activeProfile.companyEmail, companyWeb:activeProfile.companyWeb, gasSafeNo:activeProfile.gasSafeNo, engineerName:activeProfile.engineerName, gasId:activeProfile.gasId }));
       setScreen("gsc"); setSubScreen("fileRef");
     } else if (type === "bs") {
       setServiceData({ ...defaultServiceData(), ...(rec.serviceData || {}) });
@@ -10585,6 +10655,7 @@ function App() {
       setScreen("gasWorks"); setGwSubScreen("fileRef");
     } else if (type === "gi") {
       setGiData({ ...defaultGiData(), ...(rec.giData || {}), date: todayISO(), time: "", engineerSigImage: null, engineerSignDatetime: "", permitReceiverDatetime: "", permitIssuerDatetime: "", permitReceiverDatetime2: "", closeOutDatetime: "", watesSignDatetime: "" });
+      setEditingGiIndex(null);
       setScreen("gasIsolation"); setGiSubScreen("form");
     } else if (type === "benchmark") {
       setBmkData({ ...defaultBmkData(), ...(rec.bmkData || {}), sigEngineerImg: null, sigDate: todayISO(), sigCustomerImg: null, sigCustomerDate: todayISO() });
@@ -10629,8 +10700,29 @@ function App() {
       return merged;
     })}
     onEditGw={(rec)=>{ setGwData(rec.gwData); setEditingGwIndex(rec._origIdx); setScreen("gasWorks"); setGwSubScreen("form"); }}
-    onEditGi={(rec)=>{ setGiData(rec.giData); setScreen("gasIsolation"); setGiSubScreen("form"); }}
-    onEditBs={(rec)=>{ setServiceData(rec.serviceData); setBsSigData(rec.bsSigData||{}); setBsEngData(rec.bsEngData||{}); setEditingBsIndex(rec._origIdx); setScreen("bs"); setBsSubScreen("fileRef"); }}
+    onEditGi={(rec)=>{ setGiData({ ...defaultGiData(), ...(rec.giData || {}) }); setEditingGiIndex(rec._origIdx); setScreen("gasIsolation"); setGiSubScreen("form"); }}
+    onEditGsc={(rec)=>{
+      // Load every part of the saved certificate back into the wizard so any
+      // field (client/installation address, appliances, faults, checks,
+      // signature, engineer/company details and dates) can be changed. Saving
+      // overwrites this same record rather than creating a new one.
+      const savedDay = rec.savedAt ? new Date(rec.savedAt) : null;
+      setCertData({ ...defaultCertData(), ...(rec.certData || {}) });
+      setAppliances((rec.appliances || []).map(a => ({ ...a })));
+      setFaults((rec.faults || []).map(f => ({ ...f })));
+      setFinalChecks({ ...(rec.finalChecks || {}) });
+      setSignatureData({ ...(rec.signatureData || {}) });
+      setEngineerData({ ...(rec.engineerData || {}), certDate: rec.engineerData?.certDate || savedDay || today() });
+      setEditingGscIndex(rec._origIdx);
+      setScreen("gsc"); setSubScreen("fileRef");
+    }}
+    onEditWn={(rec)=>{
+      setWnFormData(prev => ({ ...prev, ...(rec.wnFormData || {}) }));
+      setWnEngData(prev => ({ ...prev, ...(rec.wnEngData || {}), issueDate: rec.wnEngData?.issueDate || (rec.savedAt ? new Date(rec.savedAt) : undefined) }));
+      setEditingWnIndex(rec._origIdx);
+      setScreen("warningNotice"); setWnSubScreen("fileRef");
+    }}
+    onEditBs={(rec)=>{ setServiceData(rec.serviceData); setBsSigData(rec.bsSigData||{}); setBsEngData({ ...(rec.bsEngData||{}), reportDate: rec.bsEngData?.reportDate || fmtReportDate(rec.savedAt) }); setEditingBsIndex(rec._origIdx); setScreen("bs"); setBsSubScreen("fileRef"); }}
     onEditBmk={(rec)=>{ setBmkData(rec.bmkData); setBmkEngData(rec.bmkEngData||{}); setEditingBmkIndex(rec._origIdx); setScreen("benchmark"); setBmkStep("fileRef"); }}
     invoices={invoices}
     company={company}
@@ -10731,7 +10823,7 @@ function App() {
     }
   }}/>;
   if (screen === "newJob") return <NewJobScreen onBack={()=>setScreen("home")} onHome={goHome}
-    onSelect={job => { if(job==="Gas Safety Certificate") { setCertData(defaultCertData()); setAppliances([]); setFaults([]); setFinalChecks({}); setSignatureData({}); setScreen("gsc"); setSubScreen("fileRef"); } else if(job==="Boiler Service") { setServiceData(defaultServiceData()); setBsSigData({}); setEditingBsIndex(null); setScreen("bs"); setBsSubScreen("fileRef"); } else if(job==="Gas Works") { setGwData(defaultGwData()); setEditingGwIndex(null); setScreen("gasWorks"); setGwSubScreen("fileRef"); } else if(job==="Gas Isolation") { setGiData(defaultGiData()); setScreen("gasIsolation"); setGiSubScreen("form"); } else if(job==="Benchmark Commissioning") { setBmkData(defaultBmkData()); setEditingBmkIndex(null); setScreen("benchmark"); setBmkStep("fileRef"); } else if(job==="Invoice") { setInvoiceWizardOpen(true); } else if(job==="Quote") { setQuoteWizardOpen(true); } else if(job==="Warning Notice") { setScreen("warningNotice"); setWnSubScreen("fileRef"); } else alert(`${job} coming soon`); }}/>
+    onSelect={job => { if(job==="Gas Safety Certificate") { setEditingGscIndex(null); setCertData(defaultCertData()); setAppliances([]); setFaults([]); setFinalChecks({}); setSignatureData({}); { const p = companyProfile(company); setEngineerData({ companyName:p.companyName, companyAddr:p.companyAddr, companyPostcode:p.companyPostcode, companyTel:p.companyTel, companyEmail:p.companyEmail, companyWeb:p.companyWeb, gasSafeNo:p.gasSafeNo, engineerName:p.engineerName, gasId:p.gasId }); } setScreen("gsc"); setSubScreen("fileRef"); } else if(job==="Boiler Service") { setServiceData(defaultServiceData()); setBsSigData({}); setEditingBsIndex(null); setScreen("bs"); setBsSubScreen("fileRef"); } else if(job==="Gas Works") { setGwData(defaultGwData()); setEditingGwIndex(null); setScreen("gasWorks"); setGwSubScreen("fileRef"); } else if(job==="Gas Isolation") { setEditingGiIndex(null); setGiData(defaultGiData()); setScreen("gasIsolation"); setGiSubScreen("form"); } else if(job==="Benchmark Commissioning") { setBmkData(defaultBmkData()); setEditingBmkIndex(null); setScreen("benchmark"); setBmkStep("fileRef"); } else if(job==="Invoice") { setInvoiceWizardOpen(true); } else if(job==="Quote") { setQuoteWizardOpen(true); } else if(job==="Warning Notice") { setEditingWnIndex(null); setScreen("warningNotice"); setWnSubScreen("fileRef"); } else alert(`${job} coming soon`); }}/>
 
   if (screen === "gasWorks") {
     if (gwSubScreen === "fileRef") return (
@@ -10763,13 +10855,21 @@ function App() {
 
   if (screen === "gasIsolation") {
     if (giSubScreen === "form") return <GasIsolationForm data={giData} onBack={()=>setScreen("newJob")} onHome={goHome}
-      onSave={(giFinal)=>{ const savedAt = new Date().toISOString(); setRecords(r=>[...r,{type:"gi",giData:giFinal,savedAt}]); alert("\u2705 Gas Isolation certificate saved to Records!"); setScreen("home"); setGiSubScreen(null); }}/>;
+      onSave={(giFinal)=>{
+        if (editingGiIndex !== null) {
+          setRecords(r=>r.map((rec,idx)=> idx===editingGiIndex ? {...rec, giData:giFinal} : rec));
+          setEditingGiIndex(null);
+          alert("\u2705 Gas Isolation certificate updated!");
+        } else {
+          const savedAt = new Date().toISOString(); setRecords(r=>[...r,{type:"gi",giData:giFinal,savedAt}]); alert("\u2705 Gas Isolation certificate saved to Records!");
+        }
+        setScreen("home"); setGiSubScreen(null); }}/>;
   }
 
   // Warning Notice flow
   if (screen === "warningNotice") {
     if (wnShowPDF) return <WNPDFPreview wnFormData={{...wnFormData, issueDate:wnEngData.issueDate, issueTime:wnEngData.issueTime}} wnEngData={wnEngData} onClose={()=>setWnShowPDF(false)}/>;
-    if (wnSubScreen === "fileRef") return <WNStepFileRef data={wnFormData} onChange={setWnFormData} onBack={()=>setScreen("newJob")} onHome={goHome} onNext={()=>setWnSubScreen("clientDetails")}/>;
+    if (wnSubScreen === "fileRef") return <WNStepFileRef data={wnFormData} onChange={setWnFormData} onBack={()=>{ if (editingWnIndex !== null) { setEditingWnIndex(null); setScreen("records"); setWnSubScreen(null); } else setScreen("newJob"); }} onHome={goHome} onNext={()=>setWnSubScreen("clientDetails")}/>;
     if (wnSubScreen === "clientDetails") return <WNStepClientDetails data={wnFormData} onChange={setWnFormData} onBack={()=>setWnSubScreen("fileRef")} onHome={goHome} onNext={()=>setWnSubScreen("noticeDetails")}/>;
     if (wnSubScreen === "noticeDetails") return <WNStepNoticeDetails data={wnFormData} onChange={setWnFormData} onBack={()=>setWnSubScreen("clientDetails")} onHome={goHome} onNext={()=>setWnSubScreen("engineerDetails")}/>;
     if (wnSubScreen === "engineerDetails") return (
@@ -10779,8 +10879,17 @@ function App() {
         {wnShowOptions && <WNOptionsMenu
           onPreview={()=>{ setWnShowOptions(false); setWnShowPDF(true); }}
           onSave={()=>{
+            const eng = { ...wnEngData, issueDate: wnEngData.issueDate || today() };
+            if (editingWnIndex !== null) {
+              setRecords(r=>r.map((rec,idx)=> idx===editingWnIndex ? {...rec, wnFormData, wnEngData:eng} : rec));
+              setEditingWnIndex(null);
+              setWnShowOptions(false);
+              alert("\u2705 Warning Notice updated!");
+              setScreen("records"); setWnSubScreen(null);
+              return;
+            }
             const savedAt = new Date().toISOString();
-            setRecords(r=>[...r,{type:"wn",wnFormData,wnEngData,savedAt}]);
+            setRecords(r=>[...r,{type:"wn",wnFormData,wnEngData:eng,savedAt}]);
             setWnShowOptions(false);
             alert("\u2705 Warning Notice saved to Records!");
             setScreen("home"); setWnSubScreen(null);
@@ -10792,7 +10901,7 @@ function App() {
 
   // GSC flow
   if (screen === "gsc") {
-    if (subScreen === "fileRef") return <StepFileRef data={certData} onChange={setCertData} onBack={()=>setScreen("newJob")} onHome={goHome} onNext={()=>setSubScreen("clientDetails")}/>;
+    if (subScreen === "fileRef") return <StepFileRef data={certData} onChange={setCertData} isEditing={editingGscIndex !== null} onBack={()=>{ if (editingGscIndex !== null) { setEditingGscIndex(null); setScreen("records"); setSubScreen(null); } else setScreen("newJob"); }} onHome={goHome} onNext={()=>setSubScreen("clientDetails")}/>;
     if (subScreen === "clientDetails") return <StepClientDetails data={certData} onChange={setCertData} onBack={()=>setSubScreen("fileRef")} onHome={goHome} onNext={()=>setSubScreen("applianceList")}/>;
     if (subScreen === "applianceList") return (
       <>
@@ -10811,8 +10920,19 @@ function App() {
         {showOptions && <OptionsMenu
           onPreview={()=>{setShowOptions(false);setShowPDF(true);}}
           onSave={async ()=>{
+            // Always store the certificate date so it never drifts to "today"
+            // when the PDF is opened again later.
+            const eng = { ...engineerData, certDate: engineerData.certDate || today() };
+            if (editingGscIndex !== null) {
+              setRecords(r=>r.map((rec,idx)=> idx===editingGscIndex ? {...rec, certData, appliances, faults, finalChecks, signatureData, engineerData:eng} : rec));
+              setEditingGscIndex(null);
+              setShowOptions(false);
+              alert("\u2705 Certificate updated!");
+              setScreen("records"); setSubScreen(null);
+              return;
+            }
             const savedAt = new Date().toISOString();
-            setRecords(r=>[...r,{certData,appliances,faults,finalChecks,signatureData,engineerData,savedAt}]);
+            setRecords(r=>[...r,{certData,appliances,faults,finalChecks,signatureData,engineerData:eng,savedAt}]);
             setShowOptions(false);
             alert("\u2705 Certificate saved to Records!");
             await createCalendarReminder(certData);
