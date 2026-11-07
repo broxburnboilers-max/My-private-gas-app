@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, createContext, useContext } from "react";
 
 // Ms Madi font for signatures (closest freely available match to Amalfi Coast)
 if (typeof document !== "undefined") {
@@ -251,7 +251,56 @@ function nextYear() {
 }
 
 // ── shared components ─────────────────────────────────────────────────────────
+// ── Edit mode ────────────────────────────────────────────────────────────────
+// While a saved record is being edited, every step page shows a phone-friendly
+// bar with "All sections" (back to the edit summary) and a big "Save changes"
+// button, so there is no need to tap Next through every page.
+const EditModeContext = createContext(null);
+
+function showToast(msg) {
+  try {
+    const el = document.createElement("div");
+    el.textContent = msg;
+    el.style.cssText = "position:fixed;left:50%;bottom:96px;transform:translateX(-50%);background:#1f2937;color:#fff;padding:12px 18px;border-radius:12px;font:600 15px 'Segoe UI',sans-serif;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,0.25);max-width:88vw;text-align:center";
+    document.body.appendChild(el);
+    setTimeout(() => { el.style.transition = "opacity .3s"; el.style.opacity = "0"; }, 2200);
+    setTimeout(() => el.remove(), 2600);
+  } catch { alert(msg); }
+}
+
+function EditHub({ title, subtitle, sections, onOpen, onSave, onPreview, onCancel }) {
+  const card = { display:"flex", alignItems:"center", gap:14, width:"100%", textAlign:"left", background:"#fff", border:"none", borderRadius:14, padding:"16px 16px", marginBottom:10, boxShadow:"0 2px 8px rgba(0,0,0,0.06)", cursor:"pointer", fontFamily:"'Segoe UI',sans-serif", minHeight:68 };
+  return (
+    <div style={{ display:"flex", flexDirection:"column", height:"100dvh", background:LIGHT_BG, fontFamily:"'Segoe UI',sans-serif" }}>
+      <Header title={title} onBack={onCancel}/>
+      <div style={{ flex:1, overflowY:"auto", padding:"14px 14px 8px" }}>
+        {subtitle && <div style={{ fontSize:14, color:"#555", margin:"0 4px 12px" }}>{subtitle}</div>}
+        <div style={{ fontSize:13, color:"#888", fontWeight:700, margin:"0 4px 8px", textTransform:"uppercase", letterSpacing:0.4 }}>Tap a section to change it</div>
+        {sections.map(sec => (
+          <button key={sec.key} onClick={() => onOpen(sec.key)} style={card}>
+            <div style={{ width:44, height:44, borderRadius:12, background:`${BLUE}14`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>{sec.icon}</div>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontWeight:700, fontSize:16, color:"#222" }}>{sec.label}</div>
+              <div style={{ fontSize:13, color:"#777", marginTop:3, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{sec.summary || "Tap to fill in"}</div>
+            </div>
+            <span style={{ color:BLUE, fontWeight:700, fontSize:14, flexShrink:0 }}>Edit ›</span>
+          </button>
+        ))}
+        {onPreview && (
+          <button onClick={onPreview} style={{ ...card, justifyContent:"center", background:"#fff", border:`2px solid ${BLUE}`, color:BLUE, fontWeight:700, fontSize:16, minHeight:54, marginTop:6 }}>👁 Preview PDF</button>
+        )}
+      </div>
+      <div style={{ padding:"10px 14px calc(10px + env(safe-area-inset-bottom))", background:"#fff", borderTop:"1px solid #dde", display:"flex", gap:10, flexShrink:0 }}>
+        <button onClick={onCancel} style={{ flex:1, padding:"16px 0", borderRadius:12, border:"1px solid #ccd", background:"#fff", color:"#555", fontWeight:700, fontSize:16, cursor:"pointer" }}>Cancel</button>
+        <button onClick={onSave} style={{ flex:2, padding:"16px 0", borderRadius:12, border:"none", background:BLUE, color:"#fff", fontWeight:700, fontSize:17, cursor:"pointer" }}>💾 Save changes</button>
+      </div>
+    </div>
+  );
+}
+
 function Header({ title, onBack, right }) {
+  const edit = useContext(EditModeContext);
+  if (edit && onBack) onBack = edit.onSummary;
   return (
     <div style={{ background: `linear-gradient(135deg,${DARK_BLUE},${BLUE})`, padding:"16px 20px", display:"flex", alignItems:"center", gap:10, minHeight:56, flexShrink:0 }}>
       {onBack && (
@@ -266,6 +315,13 @@ function Header({ title, onBack, right }) {
 }
 
 function BottomBar({ onHome, onNext, onOptions, nextLabel="Next" }) {
+  const edit = useContext(EditModeContext);
+  if (edit) return (
+    <div style={{ display:"flex", gap:10, padding:"10px 14px calc(10px + env(safe-area-inset-bottom))", borderTop:"1px solid #dde", background:"#fff", flexShrink:0 }}>
+      <button onClick={edit.onSummary} style={{ flex:1, padding:"15px 0", borderRadius:12, border:`2px solid ${BLUE}`, background:"#fff", color:BLUE, fontWeight:700, fontSize:15, cursor:"pointer", fontFamily:"'Segoe UI',sans-serif" }}>☰ All sections</button>
+      <button onClick={edit.onSave} style={{ flex:1.4, padding:"15px 0", borderRadius:12, border:"none", background:BLUE, color:"#fff", fontWeight:700, fontSize:16, cursor:"pointer", fontFamily:"'Segoe UI',sans-serif" }}>💾 Save changes</button>
+    </div>
+  );
   return (
     <div style={{ display:"flex", borderTop:"1px solid #dde", background:"#f8f9fc", flexShrink:0 }}>
       <button onClick={onHome} style={{ flex:1, padding:"12px 0", background:"none", border:"none", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:3, color:"#888", fontSize:11, fontFamily:"'Segoe UI',sans-serif" }}>
@@ -2498,7 +2554,7 @@ function StepFileRef({ data, onChange, onNext, onBack, onHome, isEditing }) {
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:LIGHT_BG, fontFamily:"'Segoe UI',sans-serif" }}>
       <Header title={isEditing ? "Edit Gas Safety Certificate" : "Domestic/Landlord Gas Safety Certificate"} onBack={onBack}/>
-      {isEditing && <div style={{ background:"#fff8e1", color:"#7a5b00", padding:"10px 16px", fontSize:13, borderBottom:"1px solid #ffe08a" }}>✏️ Editing a saved certificate. Go through each page and change anything you need — tap Save at the end to update this certificate.</div>}
+      {isEditing && <div style={{ background:"#fff8e1", color:"#7a5b00", padding:"10px 16px", fontSize:13, borderBottom:"1px solid #ffe08a" }}>✏️ Editing a saved certificate. Change what you need, then tap Save changes.</div>}
       <div style={{ flex:1, overflowY:"auto", padding:24 }}>
         <p style={{ color:"#888", fontSize:15, marginBottom:20, textAlign:"center" }}>Please enter a file reference</p>
         <input value={data.certRef} onChange={e=>onChange({...data,certRef:e.target.value})} placeholder="Certificate Reference"
@@ -3104,7 +3160,7 @@ function StepClientDetails({ data, onChange, onNext, onBack, onHome }) {
 function StepApplianceList({ appliances, onAdd, onEdit, onDelete, onNext, onBack, onHome }) {
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:LIGHT_BG, fontFamily:"'Segoe UI',sans-serif" }}>
-      <Header title="" onBack={onBack}
+      <Header title="Appliances" onBack={onBack}
         right={
           <div style={{ display:"flex", gap:12, alignItems:"center" }}>
             {appliances.length>0 && <button onClick={onDelete} style={{ background:"none", border:"none", color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer" }}>DELETE</button>}
@@ -3280,7 +3336,7 @@ function StepApplianceForm({ appliance, index, onSave, onBack }) {
 function StepFaultList({ faults, onAdd, onEdit, onDelete, onNext, onBack, onHome }) {
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"100vh", background:LIGHT_BG, fontFamily:"'Segoe UI',sans-serif" }}>
-      <Header title="" onBack={onBack}
+      <Header title="Faults" onBack={onBack}
         right={<button onClick={onAdd} style={{ background:"none", border:"none", color:"#fff", fontSize:24, cursor:"pointer" }}>+</button>}/>
       <div style={{ flex:1, overflowY:"auto", padding:16 }}>
         <p style={{ color:"#aaa", fontSize:14, marginBottom:12 }}>Fault :</p>
@@ -5874,7 +5930,10 @@ function ConfirmDeleteModal({ onCancel, onConfirm }) {
 
 // Gas Safety Certificates folder screen
 function GasSafetyCertsScreen({ records, onBack, onHome, onDelete, onCreateInvoice, gscFolders, onAddFolder, onRenameFolder, onDeleteFolder, onUpdateRecord, onEdit }) {
-  const [view, setView] = useState("home"); // "home" | folder id
+  const [view, setView] = useState(() => {
+    try { const v = sessionStorage.getItem("rec_return_gsc_view"); if (v) { sessionStorage.removeItem("rec_return_gsc_view"); return v; } } catch {}
+    return "home";
+  }); // "home" | folder id
   const [selected, setSelected] = useState(null);
   const [viewing, setViewing] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -7449,7 +7508,11 @@ function RecordsScreen({ records, onBack, onHome, onDelete, onImport, onEditGw, 
   // and its back button returns all the way Home rather than to a folder
   // grid full of certificate types they don't use.
   const invoiceOnlyCompany = !!companyProfile(company).invoiceOnly;
-  const [folder, setFolder] = useState(() => invoiceOnlyCompany ? "inv" : null);
+  const [folder, setFolder] = useState(() => {
+    if (invoiceOnlyCompany) return "inv";
+    try { const f = sessionStorage.getItem("rec_return_folder"); if (f) { sessionStorage.removeItem("rec_return_folder"); return f; } } catch {}
+    return null;
+  });
 
   if (folder === "reminders") return <RemindersScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} engineerData={engineerData} onRenewImported={onRenewImported} onUpdateRecord={onUpdateRecord}/>;
   if (folder === "gsc") return <GasSafetyCertsScreen records={records} onBack={()=>setFolder(null)} onHome={onHome} onDelete={onDelete} onCreateInvoice={onCreateInvoice} gscFolders={gscFolders} onAddFolder={onAddFolder} onRenameFolder={onRenameFolder} onDeleteFolder={onDeleteFolder} onUpdateRecord={onUpdateRecord} onEdit={onEditGsc}/>;
@@ -10665,6 +10728,63 @@ function App() {
     }
   }
 
+  // ── Edit-mode helpers (phone-friendly edit summary) ────────────────────────
+  const fmtD = (d) => { if (!d) return ""; const dt = d instanceof Date ? d : (parseReportDate(d) || new Date(d)); return isNaN(dt) ? String(d) : dt.toLocaleDateString("en-GB"); };
+  const joinBits = (...xs) => xs.filter(Boolean).join(" · ");
+  const confirmDiscard = () => window.confirm("Discard your changes to this record?");
+  // After saving or cancelling an edit, reopen the folder the record lives in.
+  const returnToFolder = (folderKey, gscView) => {
+    try {
+      sessionStorage.setItem("rec_return_folder", folderKey);
+      if (gscView) sessionStorage.setItem("rec_return_gsc_view", gscView);
+    } catch {}
+    setScreen("records");
+  };
+  const gscReturnView = () => (editingGscIndex !== null && records[editingGscIndex]?.gscFolder) || "home";
+
+  const saveGscEdit = () => {
+    const eng = { ...engineerData, certDate: engineerData.certDate || today() };
+    const view = gscReturnView();
+    setRecords(r=>r.map((rec,idx)=> idx===editingGscIndex ? {...rec, certData, appliances, faults, finalChecks, signatureData, engineerData:eng} : rec));
+    setEditingGscIndex(null); setSubScreen(null);
+    showToast("✅ Certificate updated");
+    returnToFolder("gsc", view);
+  };
+  const cancelGscEdit = () => { if (!confirmDiscard()) return; const view = gscReturnView(); setEditingGscIndex(null); setSubScreen(null); returnToFolder("gsc", view); };
+  const saveBsEdit = () => {
+    setRecords(r=>r.map((rec,idx)=> idx===editingBsIndex ? {...rec, serviceData, bsSigData, bsEngData} : rec));
+    setEditingBsIndex(null); setBsSubScreen(null);
+    showToast("✅ Service record updated");
+    returnToFolder("bs");
+  };
+  const cancelBsEdit = () => { if (!confirmDiscard()) return; setEditingBsIndex(null); setBsSubScreen(null); returnToFolder("bs"); };
+  const saveWnEdit = () => {
+    const eng = { ...wnEngData, issueDate: wnEngData.issueDate || today() };
+    setRecords(r=>r.map((rec,idx)=> idx===editingWnIndex ? {...rec, wnFormData, wnEngData:eng} : rec));
+    setEditingWnIndex(null); setWnSubScreen(null);
+    showToast("✅ Warning Notice updated");
+    returnToFolder("wn");
+  };
+  const cancelWnEdit = () => { if (!confirmDiscard()) return; setEditingWnIndex(null); setWnSubScreen(null); returnToFolder("wn"); };
+  const saveBmkEdit = () => {
+    setRecords(r=>r.map((rec,idx)=> idx===editingBmkIndex ? {...rec, bmkData, bmkEngData} : rec));
+    setEditingBmkIndex(null); setBmkStep(null);
+    showToast("✅ Benchmark record updated");
+    returnToFolder("bmk");
+  };
+  const cancelBmkEdit = () => { if (!confirmDiscard()) return; setEditingBmkIndex(null); setBmkStep(null); returnToFolder("bmk"); };
+
+  let editCtx = null;
+  if (screen === "gsc" && editingGscIndex !== null && !showPDF && !["applianceForm","faultForm","editHub"].includes(subScreen))
+    editCtx = { onSummary: () => setSubScreen("editHub"), onSave: saveGscEdit };
+  else if (screen === "bs" && editingBsIndex !== null && !bsShowPDF && bsSubScreen !== "editHub")
+    editCtx = { onSummary: () => setBsSubScreen("editHub"), onSave: saveBsEdit };
+  else if (screen === "warningNotice" && editingWnIndex !== null && !wnShowPDF && wnSubScreen !== "editHub")
+    editCtx = { onSummary: () => setWnSubScreen("editHub"), onSave: saveWnEdit };
+  else if (screen === "benchmark" && editingBmkIndex !== null && !bmkShowPDF && bmkStep !== "editHub")
+    editCtx = { onSummary: () => setBmkStep("editHub"), onSave: saveBmkEdit };
+
+  const __out = (() => {
   // Appliance editing
   if (subScreen === "applianceForm") {
     return <StepApplianceForm appliance={editIndex!==null?appliances[editIndex]:null} index={editIndex!==null?editIndex:appliances.length}
@@ -10714,16 +10834,16 @@ function App() {
       setSignatureData({ ...(rec.signatureData || {}) });
       setEngineerData({ ...(rec.engineerData || {}), certDate: rec.engineerData?.certDate || savedDay || today() });
       setEditingGscIndex(rec._origIdx);
-      setScreen("gsc"); setSubScreen("fileRef");
+      setScreen("gsc"); setSubScreen("editHub");
     }}
     onEditWn={(rec)=>{
       setWnFormData(prev => ({ ...prev, ...(rec.wnFormData || {}) }));
       setWnEngData(prev => ({ ...prev, ...(rec.wnEngData || {}), issueDate: rec.wnEngData?.issueDate || (rec.savedAt ? new Date(rec.savedAt) : undefined) }));
       setEditingWnIndex(rec._origIdx);
-      setScreen("warningNotice"); setWnSubScreen("fileRef");
+      setScreen("warningNotice"); setWnSubScreen("editHub");
     }}
-    onEditBs={(rec)=>{ setServiceData(rec.serviceData); setBsSigData(rec.bsSigData||{}); setBsEngData({ ...(rec.bsEngData||{}), reportDate: rec.bsEngData?.reportDate || fmtReportDate(rec.savedAt) }); setEditingBsIndex(rec._origIdx); setScreen("bs"); setBsSubScreen("fileRef"); }}
-    onEditBmk={(rec)=>{ setBmkData(rec.bmkData); setBmkEngData(rec.bmkEngData||{}); setEditingBmkIndex(rec._origIdx); setScreen("benchmark"); setBmkStep("fileRef"); }}
+    onEditBs={(rec)=>{ setServiceData(rec.serviceData); setBsSigData(rec.bsSigData||{}); setBsEngData({ ...(rec.bsEngData||{}), reportDate: rec.bsEngData?.reportDate || fmtReportDate(rec.savedAt) }); setEditingBsIndex(rec._origIdx); setScreen("bs"); setBsSubScreen("editHub"); }}
+    onEditBmk={(rec)=>{ setBmkData(rec.bmkData); setBmkEngData(rec.bmkEngData||{}); setEditingBmkIndex(rec._origIdx); setScreen("benchmark"); setBmkStep("editHub"); }}
     invoices={invoices}
     company={company}
     onCreateInvoice={(invData)=>{ setInvoices(prev=>[...prev, {...invData, company}]); alert("✅ Invoice saved to Invoices folder!"); }}
@@ -10868,6 +10988,18 @@ function App() {
 
   // Warning Notice flow
   if (screen === "warningNotice") {
+    if (wnSubScreen === "editHub" && !wnShowPDF) {
+      const wd = wnFormData, eng = wnEngData;
+      return <EditHub title="Edit Warning Notice"
+        subtitle={joinBits(wd.clientName, wd.instAddr1 || wd.clientAddr1)}
+        sections={[
+          { key:"fileRef", icon:"🏷️", label:"Reference", summary: wd.certRef },
+          { key:"clientDetails", icon:"🏠", label:"Client & installation address", summary: joinBits(wd.clientName, [wd.clientAddr1, wd.clientPostcode].filter(Boolean).join(", "), wd.instAddr1 && wd.instAddr1 !== wd.clientAddr1 ? "Install: " + wd.instAddr1 : "") },
+          { key:"noticeDetails", icon:"⚠️", label:"Notice details", summary: joinBits(wd.make, wd.model, wd.locationRoom) },
+          { key:"engineerDetails", icon:"👷", label:"Engineer, company & date", summary: joinBits(eng.engineerName, eng.companyName, eng.issueDate ? "Dated " + fmtD(eng.issueDate) : "") },
+        ]}
+        onOpen={k=>setWnSubScreen(k)} onSave={saveWnEdit} onCancel={cancelWnEdit} onPreview={()=>setWnShowPDF(true)}/>;
+    }
     if (wnShowPDF) return <WNPDFPreview wnFormData={{...wnFormData, issueDate:wnEngData.issueDate, issueTime:wnEngData.issueTime}} wnEngData={wnEngData} onClose={()=>setWnShowPDF(false)}/>;
     if (wnSubScreen === "fileRef") return <WNStepFileRef data={wnFormData} onChange={setWnFormData} onBack={()=>{ if (editingWnIndex !== null) { setEditingWnIndex(null); setScreen("records"); setWnSubScreen(null); } else setScreen("newJob"); }} onHome={goHome} onNext={()=>setWnSubScreen("clientDetails")}/>;
     if (wnSubScreen === "clientDetails") return <WNStepClientDetails data={wnFormData} onChange={setWnFormData} onBack={()=>setWnSubScreen("fileRef")} onHome={goHome} onNext={()=>setWnSubScreen("noticeDetails")}/>;
@@ -10901,6 +11033,21 @@ function App() {
 
   // GSC flow
   if (screen === "gsc") {
+    if (subScreen === "editHub") {
+      const cd = certData, eng = engineerData;
+      return <EditHub title="Edit Gas Safety Certificate"
+        subtitle={joinBits(cd.clientName, cd.instAddr1 || cd.clientAddr1)}
+        sections={[
+          { key:"fileRef", icon:"🏷️", label:"Certificate reference", summary: cd.certRef },
+          { key:"clientDetails", icon:"🏠", label:"Client & installation address", summary: joinBits(cd.clientName, [cd.clientAddr1, cd.clientPostcode].filter(Boolean).join(", "), cd.instAddr1 && cd.instAddr1 !== cd.clientAddr1 ? "Install: " + cd.instAddr1 : "") },
+          { key:"applianceList", icon:"🔥", label:"Appliances", summary: appliances.length ? `${appliances.length} appliance${appliances.length!==1?"s":""}: ${appliances.map(a=>a.type||a.location).filter(Boolean).join(", ")}` : "None added" },
+          { key:"faultList", icon:"⚠️", label:"Faults", summary: faults.length ? `${faults.length} fault${faults.length!==1?"s":""}` : "None recorded" },
+          { key:"finalChecks", icon:"✅", label:"Final checks & next inspection", summary: finalChecks.inspectionDate ? "Next inspection " + fmtD(finalChecks.inspectionDate) : "" },
+          { key:"signature", icon:"✍️", label:"Signature", summary: signatureData.engineerSigImage ? "Signed" : "" },
+          { key:"engineerDetails", icon:"👷", label:"Engineer, company & date", summary: joinBits(eng.engineerName, eng.companyName, eng.certDate ? "Dated " + fmtD(eng.certDate) : "") },
+        ]}
+        onOpen={k=>setSubScreen(k)} onSave={saveGscEdit} onCancel={cancelGscEdit} onPreview={()=>setShowPDF(true)}/>;
+    }
     if (subScreen === "fileRef") return <StepFileRef data={certData} onChange={setCertData} isEditing={editingGscIndex !== null} onBack={()=>{ if (editingGscIndex !== null) { setEditingGscIndex(null); setScreen("records"); setSubScreen(null); } else setScreen("newJob"); }} onHome={goHome} onNext={()=>setSubScreen("clientDetails")}/>;
     if (subScreen === "clientDetails") return <StepClientDetails data={certData} onChange={setCertData} onBack={()=>setSubScreen("fileRef")} onHome={goHome} onNext={()=>setSubScreen("applianceList")}/>;
     if (subScreen === "applianceList") return (
@@ -10944,6 +11091,21 @@ function App() {
 
   // BS flow
   if (screen === "bs") {
+    if (bsSubScreen === "editHub" && !bsShowPDF) {
+      const sd = serviceData, eng = bsEngData;
+      return <EditHub title="Edit Boiler Service Record"
+        subtitle={joinBits(sd.clientName, sd.instAddr1 || sd.clientAddr1)}
+        sections={[
+          { key:"fileRef", icon:"🏷️", label:"Certificate reference", summary: sd.certRef },
+          { key:"clientDetails", icon:"🏠", label:"Client & installation address", summary: joinBits(sd.clientName, [sd.clientAddr1, sd.clientPostcode].filter(Boolean).join(", "), sd.instAddr1 && sd.instAddr1 !== sd.clientAddr1 ? "Install: " + sd.instAddr1 : "") },
+          { key:"applianceDetails", icon:"🔥", label:"Appliance details", summary: joinBits(sd.boilerMake || sd.applianceMake, sd.boilerModel || sd.applianceModel) },
+          { key:"prelimChecks", icon:"✅", label:"Checks", summary: "" },
+          { key:"notes", icon:"📝", label:"Notes", summary: sd.notes || sd.workCarriedOut || "" },
+          { key:"signature", icon:"✍️", label:"Signature", summary: bsSigData.engineerSigImage ? "Signed" : "" },
+          { key:"engineerDetails", icon:"👷", label:"Engineer, company & date", summary: joinBits(eng.engineerName, eng.companyName, eng.reportDate ? "Dated " + fmtD(eng.reportDate) : "") },
+        ]}
+        onOpen={k=>setBsSubScreen(k)} onSave={saveBsEdit} onCancel={cancelBsEdit} onPreview={()=>setBsShowPDF(true)}/>;
+    }
     if (bsShowPDF) return <BSPDFPreview serviceData={serviceData} engineerData={bsEngData} signatureData={bsSigData} onClose={()=>setBsShowPDF(false)}/>;
     if (bsSubScreen === "fileRef") return <BSStepFileRef data={serviceData} onChange={setServiceData} onBack={()=>setScreen("newJob")} onHome={goHome} onNext={()=>setBsSubScreen("clientDetails")}/>;
     if (bsSubScreen === "clientDetails") return <BSStepClientDetails data={serviceData} onChange={setServiceData} onBack={()=>setBsSubScreen("fileRef")} onHome={goHome} onNext={()=>setBsSubScreen("applianceDetails")}/>;
@@ -10977,6 +11139,25 @@ function App() {
   }
 
   if (screen === "benchmark") {
+    if (bmkStep === "editHub" && !bmkShowPDF) {
+      const bd = bmkData, eng = bmkEngData;
+      return <EditHub title="Edit Benchmark Record"
+        subtitle={joinBits(bd.clientName, bd.instAddr1 || bd.clientAddr1)}
+        sections={[
+          { key:"fileRef", icon:"🏷️", label:"Certificate reference", summary: joinBits(bd.certNo, bd.notificationNo) },
+          { key:"clientDetails", icon:"🏠", label:"Client & installation address", summary: joinBits(bd.clientName, [bd.clientAddr1, bd.clientPostcode].filter(Boolean).join(", "), bd.instAddr1 && bd.instAddr1 !== bd.clientAddr1 ? "Install: " + bd.instAddr1 : "") },
+          { key:"appliance", icon:"🔥", label:"Boiler", summary: joinBits(bd.boilerMake, bd.boilerModel, bd.boilerSerial) },
+          { key:"controls", icon:"🎛️", label:"Controls", summary: "" },
+          { key:"allSystems", icon:"💧", label:"System cleaning", summary: "" },
+          { key:"measure", icon:"📏", label:"Readings", summary: "" },
+          { key:"finalChecks", icon:"✅", label:"Final checks", summary: "" },
+          { key:"services", icon:"🛠️", label:"Service log", summary: "" },
+          { key:"signature", icon:"✍️", label:"Engineer signature", summary: joinBits(bd.sigEngineerImg ? "Signed" : "", bd.sigDate ? "Dated " + fmtD(bd.sigDate) : "") },
+          { key:"customerSig", icon:"🖊️", label:"Customer signature", summary: joinBits(bd.sigCustomerImg ? "Signed" : "", bd.sigCustomerDate ? "Dated " + fmtD(bd.sigCustomerDate) : "") },
+          { key:"company", icon:"👷", label:"Engineer & company", summary: joinBits(eng.engineerName, eng.companyName) },
+        ]}
+        onOpen={k=>setBmkStep(k)} onSave={saveBmkEdit} onCancel={cancelBmkEdit} onPreview={()=>setBmkShowPDF(true)}/>;
+    }
     if (bmkShowPDF) return <BenchmarkPDF bmkData={bmkData} engineerData={bmkEngData} onClose={()=>setBmkShowPDF(false)}/>;
     if (bmkStep === "fileRef") return <BmkStepFileRef data={bmkData} onChange={setBmkData} onBack={()=>setScreen("newJob")} onHome={goHome} onNext={()=>setBmkStep("clientDetails")}/>;
     if (bmkStep === "clientDetails") return <BmkStepClientDetails data={bmkData} onChange={setBmkData} onBack={()=>setBmkStep("fileRef")} onHome={goHome} onNext={()=>setBmkStep("appliance")}/>;
@@ -11013,6 +11194,8 @@ function App() {
   }
 
   return null;
+  })();
+  return <EditModeContext.Provider value={editCtx}>{__out}</EditModeContext.Provider>;
 }
 
 // ── GAS ISOLATION EMAIL ───────────────────────────────────────────────────────
